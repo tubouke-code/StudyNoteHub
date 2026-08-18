@@ -24,7 +24,10 @@ interface NoteCardProps {
 export function NoteCard({ note }: NoteCardProps) {
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isDownloaded, setIsDownloaded] = useState(false);
-  const isFree = Number(note.price) === 0;
+
+  if (!note) return null;
+
+  const isFree = Number(note.price || 0) === 0;
 
   const handleDownload = (e: React.MouseEvent) => {
     e.preventDefault();
