@@ -16,6 +16,8 @@ import {
   GraduationCap,
   Sparkles,
   ArrowRight,
+  School,
+  Globe,
   Loader2
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
@@ -38,7 +40,12 @@ export default function UploadNotesPage() {
   const [title, setTitle] = useState('');
   const [courseCode, setCourseCode] = useState('');
   const [courseTitle, setCourseTitle] = useState('');
-  const [institution, setInstitution] = useState(INSTITUTIONS[1]);
+  
+  // Specific School vs Universal Selection
+  const [isSpecificSchool, setIsSpecificSchool] = useState(true);
+  const [selectedInstitutionPreset, setSelectedInstitutionPreset] = useState(INSTITUTIONS[1]);
+  const [customInstitution, setCustomInstitution] = useState('');
+
   const [category, setCategory] = useState(CATEGORIES[1]);
   const [level, setLevel] = useState('400L');
   const [description, setDescription] = useState('');
@@ -55,6 +62,11 @@ export default function UploadNotesPage() {
   const platformHostingFee = actualPrice - creatorRoyaltyPerDownload;
   const estimatedSales = 25;
   const estimatedTotalEarnings = creatorRoyaltyPerDownload * estimatedSales;
+
+  // Final institution value
+  const finalInstitution = !isSpecificSchool 
+    ? 'General / All Universities' 
+    : (selectedInstitutionPreset === 'Other' ? customInstitution || 'Custom Institution' : selectedInstitutionPreset);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -105,7 +117,7 @@ export default function UploadNotesPage() {
             </div>
             <h2 className="text-2xl font-black text-slate-900">Upload Submitted for Review!</h2>
             <p className="text-xs sm:text-sm text-slate-600 max-w-md mx-auto">
-              Your material is in the <strong>Admin Moderation Queue</strong>. Once approved, it will be published to the catalog and start generating 90% royalties!
+              Your material for <strong>{finalInstitution}</strong> is in the <strong>Admin Moderation Queue</strong>. Once approved, it will be published to the catalog and start generating 90% royalties!
             </p>
           </div>
         ) : (
@@ -149,10 +161,10 @@ export default function UploadNotesPage() {
               </div>
             </div>
 
-            {/* Step 2: Document Details */}
-            <div className="p-6 sm:p-8 bg-white rounded-3xl border border-slate-200/80 shadow-xs space-y-4">
+            {/* Step 2: Document Details & Specific School Selection */}
+            <div className="p-6 sm:p-8 bg-white rounded-3xl border border-slate-200/80 shadow-xs space-y-5">
               <label className="text-xs font-black uppercase tracking-wider text-slate-700 block">
-                2. Document Details & University Tagging
+                2. Document Details & Institution Specification
               </label>
 
               <div className="space-y-1.5">
@@ -165,6 +177,78 @@ export default function UploadNotesPage() {
                   placeholder="e.g. Design and Implementation of an Online Escrow System (Chapters 1-5 + Source Code)"
                   className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium outline-none focus:border-primary-500"
                 />
+              </div>
+
+              {/* School Specification Toggle */}
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="text-xs font-black text-slate-900 block">
+                      Target Institution / School
+                    </label>
+                    <p className="text-[11px] text-slate-500">
+                      Does this document target a specific school or is it general study material?
+                    </p>
+                  </div>
+
+                  <div className="flex items-center p-1 bg-slate-200/80 rounded-xl text-xs font-bold">
+                    <button
+                      type="button"
+                      onClick={() => setIsSpecificSchool(true)}
+                      className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
+                        isSpecificSchool
+                          ? 'bg-white text-primary-700 shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      <School className="w-3.5 h-3.5" /> Specific School
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsSpecificSchool(false)}
+                      className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
+                        !isSpecificSchool
+                          ? 'bg-white text-primary-700 shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      <Globe className="w-3.5 h-3.5" /> All Universities
+                    </button>
+                  </div>
+                </div>
+
+                {/* If Specific School: Select or Type School Name */}
+                {isSpecificSchool && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-slate-600">Select School from List</label>
+                      <select
+                        value={selectedInstitutionPreset}
+                        onChange={(e) => setSelectedInstitutionPreset(e.target.value)}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-medium outline-none bg-white"
+                      >
+                        {INSTITUTIONS.filter(i => i !== 'All Universities').map((inst) => (
+                          <option key={inst} value={inst}>{inst}</option>
+                        ))}
+                        <option value="Other">Other (Type My School Below)</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-slate-600">
+                        {selectedInstitutionPreset === 'Other' ? 'Type Exact School Name (Required)' : 'Or Custom Campus / Faculty (Optional)'}
+                      </label>
+                      <input
+                        type="text"
+                        required={selectedInstitutionPreset === 'Other'}
+                        value={customInstitution}
+                        onChange={(e) => setCustomInstitution(e.target.value)}
+                        placeholder="e.g. UNIPORT, Bowen, LASU, Poly..."
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-medium outline-none focus:border-primary-500 bg-white"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -192,20 +276,7 @@ export default function UploadNotesPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-700">University / Institution</label>
-                  <select
-                    value={institution}
-                    onChange={(e) => setInstitution(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-medium outline-none bg-white"
-                  >
-                    {INSTITUTIONS.filter(i => i !== 'All Universities').map((inst) => (
-                      <option key={inst} value={inst}>{inst}</option>
-                    ))}
-                  </select>
-                </div>
-
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-slate-700">Category / Field</label>
                   <select
@@ -275,7 +346,7 @@ export default function UploadNotesPage() {
               </div>
             </div>
 
-            {/* Step 4: Pricing & 90% Royalty Calculator (10% Platform Fee) */}
+            {/* Step 4: Pricing & 90% Royalty Calculator */}
             <div className="p-6 sm:p-8 bg-white rounded-3xl border border-slate-200/80 shadow-xs space-y-6">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-black uppercase tracking-wider text-slate-700">
