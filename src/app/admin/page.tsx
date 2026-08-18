@@ -3,527 +3,564 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { 
-  ShieldCheck, 
-  Users, 
-  Scale, 
-  FileCheck, 
-  DollarSign, 
-  CheckCircle, 
-  XCircle, 
+  Shield, 
   AlertTriangle, 
-  Building2, 
-  ArrowRight,
-  Search,
-  UserPlus,
-  Lock,
-  ChevronDown,
+  CheckCircle2, 
+  XCircle, 
+  FileText, 
+  DollarSign, 
+  Users, 
+  BookOpen, 
+  Search, 
+  Filter, 
+  ChevronRight, 
+  MessageSquare, 
+  UserCheck, 
+  UserX,
+  ExternalLink,
   Sparkles,
+  Award,
   RefreshCw,
-  Eye
+  GraduationCap
 } from 'lucide-react';
-import { MOCK_ADMINS, MOCK_ORDERS, MOCK_DOCUMENTS, MOCK_PAYOUT_REQUESTS, MOCK_WRITERS } from '@/lib/mock-data';
+import { useAuth } from '@/context/AuthContext';
+import { MOCK_ORDERS, MOCK_DOCUMENTS, MOCK_ADMINS, MOCK_PAYOUT_REQUESTS, MOCK_WRITERS } from '@/lib/mock-data';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import { AdminPermission, AdminUser } from '@/types/database.types';
+import { AdminPermission } from '@/types/database.types';
 
-export default function AdminDashboardPage() {
-  const [admins, setAdmins] = useState<AdminUser[]>(MOCK_ADMINS);
-  const [currentAdmin, setCurrentAdmin] = useState<AdminUser>(MOCK_ADMINS[0]);
-  const [activeTab, setActiveTab] = useState<'DISPUTES' | 'MODERATION' | 'PAYOUTS' | 'TEAM' | 'ANALYTICS'>('DISPUTES');
+export default function AdminPortalPage() {
+  const { user } = useAuth();
+  const [activeTab, setActiveTab] = useState<'disputes' | 'moderation' | 'vetting' | 'payouts' | 'team'>('vetting');
+  const [searchQuery, setSearchQuery] = useState('');
 
-  // Dispute state
-  const [disputedOrders, setDisputedOrders] = useState(MOCK_ORDERS.filter(o => o.status === 'DISPUTED'));
-  
-  // Note moderation state
-  const [pendingNotes, setPendingNotes] = useState(MOCK_DOCUMENTS.filter(d => d.status === 'PENDING'));
-  
-  // Payout state
+  // Mock pending writer applications for vetting
+  const [writerApplications, setWriterApplications] = useState([
+    {
+      id: 'app_01',
+      name: 'Dr. Emeka Okafor',
+      email: 'dr.emeka@writers.hub',
+      institution: 'University of Ibadan',
+      degree: 'Ph.D in Econometric Modeling & Statistics',
+      sample_topic: 'Impact of Monetary Policy on Inflation Dynamics in Sub-Saharan Africa',
+      turnitin_similarity: 2.4,
+      ai_score: 0.0,
+      test_score: '98%',
+      token_paid: true,
+      token_amount: 3500,
+      applied_at: '2025-02-17T14:20:00Z',
+      status: 'PENDING',
+    },
+    {
+      id: 'app_02',
+      name: 'Barr. Fatima Lawal',
+      email: 'fatima.lawal@writers.hub',
+      institution: 'Ahmadu Bello University (ABU)',
+      degree: 'LL.B (First Class Honours) & B.L',
+      sample_topic: 'Judicial Review of Administrative Actions under the 1999 Constitution',
+      turnitin_similarity: 1.8,
+      ai_score: 0.0,
+      test_score: '96%',
+      token_paid: true,
+      token_amount: 3500,
+      applied_at: '2025-02-18T09:15:00Z',
+      status: 'PENDING',
+    },
+    {
+      id: 'app_03',
+      name: 'Chidi Kenneth',
+      email: 'chidi.k@gmail.com',
+      institution: 'UNN Nsukka',
+      degree: 'B.Sc Microbiology',
+      sample_topic: 'Antimicrobial Resistance Mechanisms in Clinical Isolates',
+      turnitin_similarity: 18.5, // High plagiarism
+      ai_score: 45.0, // High AI
+      test_score: '62%',
+      token_paid: true,
+      token_amount: 3500,
+      applied_at: '2025-02-18T11:40:00Z',
+      status: 'PENDING',
+    },
+  ]);
+
+  // Escrow Dispute Cases
+  const [disputedOrders, setDisputedOrders] = useState(
+    MOCK_ORDERS.filter((o) => o.status === 'DISPUTED' || o.escrow_status === 'DISPUTE_HOLD')
+  );
+
+  // Pending Notes Moderation
+  const [pendingNotes, setPendingNotes] = useState(
+    MOCK_DOCUMENTS.filter((d) => d.status === 'PENDING')
+  );
+
+  // Writer Payout Requests
   const [payouts, setPayouts] = useState(MOCK_PAYOUT_REQUESTS);
 
-  // Invite admin modal
-  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
-  const [newAdminName, setNewAdminName] = useState('');
-  const [newAdminEmail, setNewAdminEmail] = useState('');
-  const [newAdminRole, setNewAdminRole] = useState<AdminPermission>('DISPUTE_MANAGER');
+  // Invite Admin State
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteName, setInviteName] = useState('');
+  const [invitePermission, setInvitePermission] = useState<AdminPermission>('DISPUTE_MANAGER');
+  const [adminList, setAdminList] = useState(MOCK_ADMINS);
 
-  // Actions
-  const handleResolveDispute = (orderId: string, resolution: 'WRITER' | 'STUDENT' | 'SPLIT') => {
-    const actionText = 
-      resolution === 'WRITER' ? 'Release 100% Escrow to Writer' :
-      resolution === 'STUDENT' ? 'Refund 100% Escrow to Student' : 'Split Escrow 50/50';
+  const handleApproveWriter = (id: string) => {
+    setWriterApplications(prev => prev.map(a => a.id === id ? { ...a, status: 'APPROVED' } : a));
+    alert('Writer accredited successfully! Verified badge and open bidding access granted.');
+  };
 
-    if (window.confirm(`Confirm dispute resolution: "${actionText}" for order #${orderId}?`)) {
-      setDisputedOrders(prev => prev.filter(o => o.id !== orderId));
-      alert(`Dispute for #${orderId} resolved by ${currentAdmin.full_name}. Resolution: ${actionText}.`);
-    }
+  const handleRejectWriter = (id: string) => {
+    setWriterApplications(prev => prev.map(a => a.id === id ? { ...a, status: 'REJECTED' } : a));
+    alert('Writer application rejected due to quality standards.');
+  };
+
+  const handleSettleDispute = (orderId: string, ruling: 'RELEASE_TO_WRITER' | 'REFUND_STUDENT') => {
+    setDisputedOrders(prev => prev.filter(o => o.id !== orderId));
+    alert(`Dispute settled: Ruling executed (${ruling}). Funds transferred from escrow.`);
   };
 
   const handleApproveNote = (docId: string) => {
     setPendingNotes(prev => prev.filter(d => d.id !== docId));
-    alert(`Study note approved and published to the public catalog.`);
+    alert('Study material approved and published to the live catalog!');
   };
 
-  const handleRejectNote = (docId: string) => {
-    const reason = window.prompt('Enter rejection reason for the uploader:');
-    if (reason) {
-      setPendingNotes(prev => prev.filter(d => d.id !== docId));
-      alert(`Study note rejected. Reason sent to uploader.`);
-    }
-  };
-
-  const handleProcessPayout = (payoutId: string, writerName: string, amount: number) => {
-    if (window.confirm(`Confirm that ${formatCurrency(amount)} has been transferred to ${writerName}?`)) {
-      setPayouts(prev => prev.map(p => p.id === payoutId ? { ...p, status: 'PROCESSED' } : p));
-      alert(`Payout of ${formatCurrency(amount)} marked as PROCESSED.`);
-    }
+  const handleApprovePayout = (payoutId: string) => {
+    setPayouts(prev => prev.map(p => p.id === payoutId ? { ...p, status: 'PROCESSED' } : p));
+    alert('Bank transfer initiated via Flutterwave/Paystack Transfers!');
   };
 
   const handleInviteAdmin = (e: React.FormEvent) => {
     e.preventDefault();
-    const newAdmin: AdminUser = {
+    const newAdmin = {
       id: `adm_${Date.now()}`,
-      full_name: newAdminName,
-      email: newAdminEmail,
-      permission: newAdminRole,
-      avatar_url: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=250',
-      last_login: 'Just invited',
+      email: inviteEmail,
+      full_name: inviteName,
+      permission: invitePermission,
+      avatar_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250',
+      last_login: 'Pending Invite',
       is_active: true,
     };
-    setAdmins([...admins, newAdmin]);
-    setIsInviteModalOpen(false);
-    setNewAdminName('');
-    setNewAdminEmail('');
-    alert(`New Admin ${newAdminName} invited with ${newAdminRole} permissions!`);
+    setAdminList([...adminList, newAdmin]);
+    setShowInviteModal(false);
+    setInviteEmail('');
+    setInviteName('');
+    alert(`Invitation sent to ${inviteEmail} with role ${invitePermission}`);
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
-      
-      {/* Admin Header & Role Switcher */}
-      <div className="bg-slate-900 text-white rounded-3xl p-6 sm:p-8 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-6 border border-slate-800">
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <span className="px-3 py-1 rounded-full text-xs font-black bg-primary-500/20 text-primary-300 border border-primary-500/30 flex items-center gap-1.5">
-              <ShieldCheck className="w-4 h-4 text-primary-400" />
-              Multi-Admin Control Center
-            </span>
-            <span className="text-xs text-slate-400 font-mono">v1.0.0</span>
+    <div className="min-h-screen bg-slate-900 text-slate-100 py-8 sm:py-12">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
+        
+        {/* Portal Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-6">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+                Super Admin Console
+              </span>
+              <span className="text-xs text-slate-400">• Authenticated as {user?.email || 'Super Admin'}</span>
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
+              Platform Operations Center
+            </h1>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black tracking-tight">
-            StudyNoteHub Administration Portal
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-400">
-            Dispute mediation, escrow vault settlement, note content approvals, and financial audits.
-          </p>
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowInviteModal(true)}
+              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-lg shadow-indigo-600/30 transition-all flex items-center gap-1.5"
+            >
+              <Users className="w-4 h-4" />
+              + Invite Admin Staff
+            </button>
+          </div>
         </div>
 
-        {/* Current Active Admin Identity Switcher (Demonstrating Multi-Admin) */}
-        <div className="bg-slate-800/90 p-3.5 rounded-2xl border border-slate-700 space-y-2">
-          <div className="flex items-center justify-between text-xs text-slate-400">
-            <span>Logged in as:</span>
-            <span className="text-[10px] font-bold uppercase text-emerald-400 px-2 py-0.5 rounded bg-emerald-950/80 border border-emerald-800">
-              {currentAdmin.permission}
-            </span>
-          </div>
-          <select
-            value={currentAdmin.id}
-            onChange={(e) => {
-              const selected = admins.find(a => a.id === e.target.value);
-              if (selected) setCurrentAdmin(selected);
-            }}
-            className="w-full bg-slate-900 border border-slate-700 text-white text-xs font-bold rounded-xl p-2.5 outline-none focus:border-primary-500"
+        {/* Navigation Tabs */}
+        <div className="flex flex-wrap gap-2 border-b border-slate-800 pb-2">
+          <button
+            onClick={() => setActiveTab('vetting')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+              activeTab === 'vetting'
+                ? 'bg-emerald-600 text-white shadow-lg'
+                : 'bg-slate-800/80 text-slate-400 hover:text-white'
+            }`}
           >
-            {admins.map((adm) => (
-              <option key={adm.id} value={adm.id}>
-                {adm.full_name} ({adm.permission})
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
+            <Award className="w-4 h-4" />
+            Writer Vetting Queue ({writerApplications.filter(a => a.status === 'PENDING').length})
+          </button>
 
-      {/* Platform KPI Metrics */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-1">
-          <span className="text-xs text-slate-400 font-semibold">Total Escrow Vault</span>
-          <p className="text-2xl font-black text-emerald-600">₦125,000.00</p>
-          <span className="text-[11px] text-emerald-700 font-bold">100% Backed in Escrow</span>
-        </div>
+          <button
+            onClick={() => setActiveTab('disputes')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+              activeTab === 'disputes'
+                ? 'bg-indigo-600 text-white shadow-lg'
+                : 'bg-slate-800/80 text-slate-400 hover:text-white'
+            }`}
+          >
+            <AlertTriangle className="w-4 h-4" />
+            Escrow Dispute Court ({disputedOrders.length})
+          </button>
 
-        <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-1">
-          <span className="text-xs text-slate-400 font-semibold">Platform Fees Earned</span>
-          <p className="text-2xl font-black text-primary-600">₦18,750.00</p>
-          <span className="text-[11px] text-slate-500 font-medium">15% Commission rate</span>
-        </div>
+          <button
+            onClick={() => setActiveTab('moderation')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+              activeTab === 'moderation'
+                ? 'bg-indigo-600 text-white shadow-lg'
+                : 'bg-slate-800/80 text-slate-400 hover:text-white'
+            }`}
+          >
+            <BookOpen className="w-4 h-4" />
+            Note Moderation ({pendingNotes.length})
+          </button>
 
-        <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-1">
-          <span className="text-xs text-slate-400 font-semibold">Pending Disputes</span>
-          <p className="text-2xl font-black text-amber-500">{disputedOrders.length}</p>
-          <span className="text-[11px] text-amber-600 font-bold">Requires Mediation</span>
-        </div>
+          <button
+            onClick={() => setActiveTab('payouts')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+              activeTab === 'payouts'
+                ? 'bg-indigo-600 text-white shadow-lg'
+                : 'bg-slate-800/80 text-slate-400 hover:text-white'
+            }`}
+          >
+            <DollarSign className="w-4 h-4" />
+            Bank Payout Requests ({payouts.filter(p => p.status === 'PENDING').length})
+          </button>
 
-        <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-1">
-          <span className="text-xs text-slate-400 font-semibold">Pending Note Approvals</span>
-          <p className="text-2xl font-black text-slate-900">{pendingNotes.length}</p>
-          <span className="text-[11px] text-slate-500 font-medium">Content Moderation</span>
-        </div>
-      </div>
-
-      {/* Navigation Tabs */}
-      <div className="space-y-6">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              onClick={() => setActiveTab('DISPUTES')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                activeTab === 'DISPUTES'
-                  ? 'bg-primary-600 text-white shadow-md'
-                  : 'text-slate-600 hover:bg-slate-100'
-              }`}
-            >
-              <Scale className="w-3.5 h-3.5" />
-              Dispute Resolution ({disputedOrders.length})
-            </button>
-
-            <button
-              onClick={() => setActiveTab('MODERATION')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                activeTab === 'MODERATION'
-                  ? 'bg-primary-600 text-white shadow-md'
-                  : 'text-slate-600 hover:bg-slate-100'
-              }`}
-            >
-              <FileCheck className="w-3.5 h-3.5" />
-              Note Moderation ({pendingNotes.length})
-            </button>
-
-            <button
-              onClick={() => setActiveTab('PAYOUTS')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                activeTab === 'PAYOUTS'
-                  ? 'bg-primary-600 text-white shadow-md'
-                  : 'text-slate-600 hover:bg-slate-100'
-              }`}
-            >
-              <DollarSign className="w-3.5 h-3.5" />
-              Writer Payouts ({payouts.filter(p => p.status === 'PENDING').length})
-            </button>
-
-            <button
-              onClick={() => setActiveTab('TEAM')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                activeTab === 'TEAM'
-                  ? 'bg-primary-600 text-white shadow-md'
-                  : 'text-slate-600 hover:bg-slate-100'
-              }`}
-            >
-              <Users className="w-3.5 h-3.5" />
-              Admin Team ({admins.length})
-            </button>
-          </div>
-
-          {activeTab === 'TEAM' && (
-            <button
-              onClick={() => setIsInviteModalOpen(true)}
-              className="px-3.5 py-1.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold shadow-xs flex items-center gap-1.5"
-            >
-              <UserPlus className="w-3.5 h-3.5" /> Invite New Admin
-            </button>
-          )}
+          <button
+            onClick={() => setActiveTab('team')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+              activeTab === 'team'
+                ? 'bg-indigo-600 text-white shadow-lg'
+                : 'bg-slate-800/80 text-slate-400 hover:text-white'
+            }`}
+          >
+            <Users className="w-4 h-4" />
+            Admin Team Staff ({adminList.length})
+          </button>
         </div>
 
-        {/* TAB 1: DISPUTE RESOLUTION CENTER */}
-        {activeTab === 'DISPUTES' && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="font-bold text-slate-900 text-sm">Escrow Dispute Mediation Queue</h3>
-              <span className="text-xs text-slate-500">Admins with DISPUTE_MANAGER permission can rule</span>
+        {/* TAB 1: WRITER VETTING & TURNITIN BENCHMARK */}
+        {activeTab === 'vetting' && (
+          <div className="space-y-6">
+            <div className="p-4 rounded-2xl bg-slate-800/60 border border-slate-700/60 text-xs text-slate-300 flex items-center justify-between">
+              <div>
+                <p className="font-bold text-white">4-Stage Academic Accreditation Engine</p>
+                <p className="text-slate-400 text-[11px]">
+                  Writers must pay their ₦3,500 token, pass grammar diagnostics, and submit an academic sample with &lt;15% Turnitin similarity and 0% AI before receiving their verified badge.
+                </p>
+              </div>
+              <span className="px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-400 font-black text-xs border border-emerald-500/30">
+                Turnitin Live Enabled
+              </span>
             </div>
 
-            {disputedOrders.length === 0 ? (
-              <div className="p-12 text-center bg-white rounded-3xl border border-slate-200 space-y-3">
-                <CheckCircle className="w-12 h-12 text-emerald-500 mx-auto" />
-                <h4 className="font-bold text-slate-900 text-base">All Escrow Disputes Resolved!</h4>
-                <p className="text-xs text-slate-500">No active disputes requiring administrative arbitration.</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {disputedOrders.map((order) => (
-                  <div
-                    key={order.id}
-                    className="bg-white rounded-3xl p-6 sm:p-8 border-2 border-amber-300 shadow-md space-y-6"
-                  >
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="px-2.5 py-0.5 rounded bg-amber-100 text-amber-900 text-xs font-black font-mono">
-                            Order #{order.id}
+            <div className="space-y-4">
+              {writerApplications.map((app) => (
+                <div
+                  key={app.id}
+                  className="p-6 rounded-2xl bg-slate-800/90 border border-slate-700 space-y-4"
+                >
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-700/60 pb-4">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-base font-bold text-white">{app.name}</h3>
+                        <span className="text-xs text-slate-400">({app.email})</span>
+                        {app.token_paid && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                            ✓ ₦3,500 Token Paid
                           </span>
-                          <span className="px-2.5 py-0.5 rounded-full bg-red-100 text-red-800 text-xs font-bold">
-                            ESCROW LOCKED: {formatCurrency(order.budget)}
+                        )}
+                      </div>
+                      <p className="text-xs text-indigo-400 font-semibold">
+                        {app.degree} • {app.institution}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      {app.status === 'PENDING' ? (
+                        <>
+                          <button
+                            onClick={() => handleRejectWriter(app.id)}
+                            className="px-3 py-1.5 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-400 font-bold text-xs border border-red-500/30 transition-all"
+                          >
+                            Reject Application
+                          </button>
+                          <button
+                            onClick={() => handleApproveWriter(app.id)}
+                            className="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg shadow-emerald-600/20 transition-all flex items-center gap-1"
+                          >
+                            <Award className="w-3.5 h-3.5" /> Accredit & Issue Badge
+                          </button>
+                        </>
+                      ) : (
+                        <span
+                          className={`text-xs font-black uppercase px-3 py-1 rounded-full ${
+                            app.status === 'APPROVED'
+                              ? 'bg-emerald-500/20 text-emerald-400'
+                              : 'bg-red-500/20 text-red-400'
+                          }`}
+                        >
+                          {app.status}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Sample Test & Turnitin Scores */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                    <div className="p-3 rounded-xl bg-slate-900/60 border border-slate-700/60 space-y-1">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase">
+                        Sample Essay Topic
+                      </span>
+                      <p className="text-slate-200 font-medium line-clamp-2">{app.sample_topic}</p>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-slate-900/60 border border-slate-700/60 space-y-1">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase">
+                        Grammar & Citation Diagnostic
+                      </span>
+                      <p className="text-emerald-400 font-black text-lg">{app.test_score}</p>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-slate-900/60 border border-slate-700/60 space-y-1">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase">
+                        Turnitin Originality & AI
+                      </span>
+                      <div className="flex items-center gap-3 mt-1">
+                        <div>
+                          <span className="text-[10px] text-slate-400 block">Similarity:</span>
+                          <span className={`font-black text-sm ${app.turnitin_similarity < 15 ? 'text-emerald-400' : 'text-red-400'}`}>
+                            {app.turnitin_similarity}%
                           </span>
                         </div>
-                        <h4 className="text-lg font-black text-slate-900">{order.title}</h4>
-                      </div>
-
-                      <div className="text-xs text-slate-500">
-                        <p>Student: <strong>{order.student?.full_name}</strong></p>
-                        <p>Writer: <strong>{order.writer?.full_name}</strong></p>
-                      </div>
-                    </div>
-
-                    {/* Dispute Details & Rubric */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                      <div className="p-4 rounded-2xl bg-amber-50/80 border border-amber-200 text-amber-950 space-y-1.5">
-                        <span className="font-black block uppercase text-[10px] tracking-wider text-amber-800">
-                          Student's Dispute Claim:
-                        </span>
-                        <p className="leading-relaxed">{order.dispute_reason}</p>
-                      </div>
-
-                      <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-slate-700 space-y-1.5">
-                        <span className="font-black block uppercase text-[10px] tracking-wider text-slate-500">
-                          Original Order Prompt & Rubric:
-                        </span>
-                        <p className="leading-relaxed">{order.instructions}</p>
-                      </div>
-                    </div>
-
-                    {/* Admin Mediation Action Buttons */}
-                    <div className="pt-2 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100">
-                      <span className="text-xs font-bold text-slate-500">
-                        Arbitrate as {currentAdmin.full_name}:
-                      </span>
-
-                      <div className="flex flex-wrap items-center gap-2">
-                        <button
-                          onClick={() => handleResolveDispute(order.id, 'WRITER')}
-                          className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm"
-                        >
-                          ✓ Rule for Writer (Release {formatCurrency(order.budget)})
-                        </button>
-
-                        <button
-                          onClick={() => handleResolveDispute(order.id, 'STUDENT')}
-                          className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs shadow-sm"
-                        >
-                          ✕ Rule for Student (Refund {formatCurrency(order.budget)})
-                        </button>
-
-                        <button
-                          onClick={() => handleResolveDispute(order.id, 'SPLIT')}
-                          className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs"
-                        >
-                          ⚖️ Split 50/50
-                        </button>
+                        <div>
+                          <span className="text-[10px] text-slate-400 block">AI Content:</span>
+                          <span className={`font-black text-sm ${app.ai_score < 10 ? 'text-indigo-400' : 'text-amber-400'}`}>
+                            {app.ai_score}%
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
-        {/* TAB 2: NOTE MODERATION QUEUE */}
-        {activeTab === 'MODERATION' && (
+        {/* TAB 2: ESCROW DISPUTE COURT */}
+        {activeTab === 'disputes' && (
           <div className="space-y-4">
-            <h3 className="font-bold text-slate-900 text-sm">Study Materials Awaiting Review</h3>
-
-            {pendingNotes.length === 0 ? (
-              <div className="p-12 text-center bg-white rounded-3xl border border-slate-200 space-y-3">
-                <CheckCircle className="w-12 h-12 text-emerald-500 mx-auto" />
-                <h4 className="font-bold text-slate-900 text-base">No Pending Documents</h4>
-                <p className="text-xs text-slate-500">All submitted study materials have been reviewed and published.</p>
+            {disputedOrders.length === 0 ? (
+              <div className="p-12 text-center bg-slate-800/40 rounded-2xl border border-slate-800 text-slate-400 text-sm">
+                No active escrow disputes in queue. All projects in good standing!
               </div>
             ) : (
-              <div className="space-y-3">
-                {pendingNotes.map((doc) => (
-                  <div
-                    key={doc.id}
-                    className="p-6 rounded-3xl bg-white border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4"
-                  >
-                    <div className="space-y-1.5 max-w-xl">
-                      <div className="flex items-center gap-2">
-                        <span className="px-2 py-0.5 rounded bg-primary-50 text-primary-700 font-bold text-xs font-mono">
-                          {doc.course_code}
-                        </span>
-                        <span className="text-xs font-bold text-slate-600">
-                          {doc.institution}
-                        </span>
-                        <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-xs font-semibold">
-                          Price: {formatCurrency(doc.price)}
-                        </span>
-                      </div>
-                      <h4 className="font-bold text-slate-900 text-base">{doc.title}</h4>
-                      <p className="text-xs text-slate-500 line-clamp-2">{doc.description}</p>
-                      <p className="text-[11px] text-slate-400">Uploader: {doc.uploader?.full_name}</p>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => handleApproveNote(doc.id)}
-                        className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs"
-                      >
-                        Approve & Publish
-                      </button>
-                      <button
-                        onClick={() => handleRejectNote(doc.id)}
-                        className="px-4 py-2 rounded-xl border border-red-200 text-red-600 hover:bg-red-50 font-bold text-xs"
-                      >
-                        Reject
-                      </button>
-                    </div>
+              disputedOrders.map((order) => (
+                <div
+                  key={order.id}
+                  className="p-6 rounded-2xl bg-slate-800/90 border border-slate-700 space-y-4"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black uppercase px-2.5 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/30">
+                      Dispute Case #{order.id}
+                    </span>
+                    <span className="text-sm font-black text-emerald-400">
+                      {formatCurrency(order.budget)} Held in Escrow
+                    </span>
                   </div>
-                ))}
-              </div>
+
+                  <h3 className="text-base font-bold text-white">{order.title}</h3>
+                  
+                  <div className="p-4 rounded-xl bg-red-950/30 border border-red-900/50 text-xs text-red-200">
+                    <strong>Dispute Claim:</strong> {order.dispute_reason}
+                  </div>
+
+                  <div className="flex items-center justify-end gap-3 pt-2">
+                    <button
+                      onClick={() => handleSettleDispute(order.id, 'REFUND_STUDENT')}
+                      className="px-4 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-bold text-xs"
+                    >
+                      Rule in Favor of Student (Full Refund)
+                    </button>
+                    <button
+                      onClick={() => handleSettleDispute(order.id, 'RELEASE_TO_WRITER')}
+                      className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs"
+                    >
+                      Rule in Favor of Writer (Release Escrow)
+                    </button>
+                  </div>
+                </div>
+              ))
             )}
           </div>
         )}
 
-        {/* TAB 3: WRITER PAYOUTS */}
-        {activeTab === 'PAYOUTS' && (
+        {/* TAB 3: NOTE MODERATION */}
+        {activeTab === 'moderation' && (
           <div className="space-y-4">
-            <h3 className="font-bold text-slate-900 text-sm">Writer Bank Withdrawal Requests</h3>
-
-            <div className="space-y-3">
-              {payouts.map((pay) => (
+            {pendingNotes.length === 0 ? (
+              <div className="p-12 text-center bg-slate-800/40 rounded-2xl border border-slate-800 text-slate-400 text-sm">
+                No pending study notes awaiting moderation.
+              </div>
+            ) : (
+              pendingNotes.map((note) => (
                 <div
-                  key={pay.id}
-                  className="p-6 rounded-3xl bg-white border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                  key={note.id}
+                  className="p-6 rounded-2xl bg-slate-800/90 border border-slate-700 flex items-center justify-between gap-4"
                 >
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-base font-black text-slate-900">{formatCurrency(pay.amount)}</span>
-                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                        pay.status === 'PROCESSED' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
-                      }`}>
-                        {pay.status}
-                      </span>
-                    </div>
-                    <p className="text-xs font-bold text-slate-800">
-                      {pay.account_name} • {pay.bank_name} ({pay.account_number})
-                    </p>
-                    <p className="text-[11px] text-slate-400">Requested: {formatDate(pay.created_at)}</p>
+                  <div className="space-y-1 max-w-2xl">
+                    <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300">
+                      {note.course_code}
+                    </span>
+                    <h3 className="text-sm font-bold text-white">{note.title}</h3>
+                    <p className="text-xs text-slate-400">{note.institution} • {note.department}</p>
                   </div>
 
-                  {pay.status === 'PENDING' ? (
+                  <div className="flex items-center gap-3">
                     <button
-                      onClick={() => handleProcessPayout(pay.id, pay.account_name, pay.amount)}
-                      className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs"
+                      onClick={() => handleApproveNote(note.id)}
+                      className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs"
                     >
-                      Mark Bank Transfer Complete
+                      Approve & Publish
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+
+        {/* TAB 4: PAYOUT REQUESTS */}
+        {activeTab === 'payouts' && (
+          <div className="space-y-4">
+            {payouts.map((payout) => (
+              <div
+                key={payout.id}
+                className="p-6 rounded-2xl bg-slate-800/90 border border-slate-700 flex items-center justify-between gap-4"
+              >
+                <div className="space-y-1">
+                  <h4 className="text-sm font-bold text-white">{payout.account_name}</h4>
+                  <p className="text-xs text-slate-400">
+                    {payout.bank_name} • {payout.account_number}
+                  </p>
+                  <span className="text-xs font-black text-emerald-400 block">
+                    Amount: {formatCurrency(payout.amount)}
+                  </span>
+                </div>
+
+                <div>
+                  {payout.status === 'PENDING' ? (
+                    <button
+                      onClick={() => handleApprovePayout(payout.id)}
+                      className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs"
+                    >
+                      Approve & Process Bank Transfer
                     </button>
                   ) : (
-                    <span className="text-xs font-bold text-emerald-600 flex items-center gap-1">
-                      <CheckCircle className="w-4 h-4" /> Paid Out
+                    <span className="text-xs font-bold text-emerald-400 px-3 py-1 rounded-full bg-emerald-500/20">
+                      ✓ Paid via Bank API
                     </span>
                   )}
                 </div>
-              ))}
-            </div>
+              </div>
+            ))}
           </div>
         )}
 
-        {/* TAB 4: ADMIN TEAM MANAGEMENT */}
-        {activeTab === 'TEAM' && (
+        {/* TAB 5: ADMIN TEAM */}
+        {activeTab === 'team' && (
           <div className="space-y-4">
-            <h3 className="font-bold text-slate-900 text-sm">Authorized Administrators ({admins.length})</h3>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {admins.map((adm) => (
-                <div
-                  key={adm.id}
-                  className="p-5 rounded-2xl bg-white border border-slate-200 shadow-xs flex items-center justify-between"
-                >
-                  <div className="flex items-center gap-3">
-                    <img
-                      src={adm.avatar_url}
-                      alt={adm.full_name}
-                      className="w-12 h-12 rounded-2xl object-cover ring-2 ring-primary-100"
-                    />
-                    <div>
-                      <h4 className="font-bold text-slate-900 text-sm">{adm.full_name}</h4>
-                      <p className="text-xs text-slate-500">{adm.email}</p>
-                      <span className="inline-block mt-1 text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-primary-50 text-primary-700">
-                        {adm.permission}
-                      </span>
-                    </div>
+            {adminList.map((adm) => (
+              <div
+                key={adm.id}
+                className="p-5 rounded-2xl bg-slate-800/90 border border-slate-700 flex items-center justify-between gap-4"
+              >
+                <div className="flex items-center gap-3">
+                  <img
+                    src={adm.avatar_url}
+                    alt={adm.full_name}
+                    className="w-10 h-10 rounded-full object-cover ring-2 ring-indigo-500/30"
+                  />
+                  <div>
+                    <h4 className="text-sm font-bold text-white">{adm.full_name}</h4>
+                    <p className="text-xs text-slate-400">{adm.email}</p>
                   </div>
-
-                  <span className="text-[11px] text-slate-400 font-medium">{adm.last_login}</span>
                 </div>
-              ))}
-            </div>
+
+                <div className="flex items-center gap-3">
+                  <span className="text-[10px] font-black uppercase px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                    {adm.permission}
+                  </span>
+                </div>
+              </div>
+            ))}
           </div>
         )}
 
       </div>
 
-      {/* Invite Admin Modal */}
-      {isInviteModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="w-full max-w-md bg-white rounded-3xl p-6 sm:p-8 space-y-6 shadow-2xl border border-slate-100">
-            <h3 className="text-lg font-bold text-slate-900">Invite New Administrator</h3>
-
+      {/* Invite Admin Staff Modal */}
+      {showInviteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 space-y-5 text-white">
+            <h3 className="text-lg font-black">Invite Admin Staff Member</h3>
             <form onSubmit={handleInviteAdmin} className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700">Admin Full Name</label>
+              <div className="space-y-1 text-xs">
+                <label className="font-bold text-slate-300">Staff Full Name</label>
                 <input
                   type="text"
                   required
-                  value={newAdminName}
-                  onChange={(e) => setNewAdminName(e.target.value)}
-                  placeholder="e.g. David Adeleke"
-                  className="w-full p-3 rounded-xl border border-slate-200 text-sm font-medium outline-none focus:border-primary-500"
+                  value={inviteName}
+                  onChange={(e) => setInviteName(e.target.value)}
+                  placeholder="e.g. Sarah Adeleke"
+                  className="w-full px-4 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-sm outline-none"
                 />
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700">Admin Email Address</label>
+              <div className="space-y-1 text-xs">
+                <label className="font-bold text-slate-300">Email Address</label>
                 <input
                   type="email"
                   required
-                  value={newAdminEmail}
-                  onChange={(e) => setNewAdminEmail(e.target.value)}
-                  placeholder="david@studynotehub.com"
-                  className="w-full p-3 rounded-xl border border-slate-200 text-sm font-medium outline-none focus:border-primary-500"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  placeholder="colleague@domain.com"
+                  className="w-full px-4 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-sm outline-none"
                 />
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700">Assigned Permission / Role</label>
+              <div className="space-y-1 text-xs">
+                <label className="font-bold text-slate-300">Assigned Permission</label>
                 <select
-                  value={newAdminRole}
-                  onChange={(e) => setNewAdminRole(e.target.value as AdminPermission)}
-                  className="w-full p-3 rounded-xl border border-slate-200 text-sm font-medium bg-white outline-none focus:border-primary-500"
+                  value={invitePermission}
+                  onChange={(e) => setInvitePermission(e.target.value as AdminPermission)}
+                  className="w-full px-4 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-sm outline-none text-white"
                 >
-                  <option value="DISPUTE_MANAGER">Dispute Mediator (Escrow Arbitrations)</option>
-                  <option value="CONTENT_MODERATOR">Content Moderator (Review Uploaded Notes)</option>
-                  <option value="FINANCE_AUDITOR">Financial Auditor (Payout Approvals)</option>
-                  <option value="SUPER_ADMIN">Super Administrator (Full Privileges)</option>
+                  <option value="DISPUTE_MANAGER">⚖️ Dispute Manager (Arbitration)</option>
+                  <option value="CONTENT_MODERATOR">📝 Content Moderator (Notes Approval)</option>
+                  <option value="FINANCE_AUDITOR">💰 Finance Auditor (Payout Processing)</option>
+                  <option value="SUPER_ADMIN">🛡️ Super Admin (Full Control)</option>
                 </select>
               </div>
 
-              <div className="pt-2 flex gap-3">
+              <div className="flex items-center justify-end gap-2 pt-2">
                 <button
                   type="button"
-                  onClick={() => setIsInviteModalOpen(false)}
-                  className="w-full py-3 rounded-xl bg-slate-100 text-slate-700 font-bold text-xs hover:bg-slate-200"
+                  onClick={() => setShowInviteModal(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 text-xs font-bold"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="w-full py-3 rounded-xl bg-primary-600 text-white font-bold text-xs hover:bg-primary-700 shadow-md"
+                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-md"
                 >
-                  Send Admin Invitation
+                  Send Admin Invite
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
-
     </div>
   );
 }

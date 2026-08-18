@@ -1,367 +1,301 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { 
   ShieldCheck, 
   Clock, 
   Send, 
-  Download, 
-  CheckCircle2, 
+  Paperclip, 
   FileText, 
-  AlertCircle, 
-  Sparkles, 
-  MessageSquare, 
-  ArrowLeft,
-  User,
-  Paperclip,
-  ThumbsUp,
+  CheckCircle2, 
+  AlertTriangle, 
+  Download, 
+  DollarSign,
+  ChevronLeft,
+  Lock,
+  Sparkles,
   RefreshCw,
-  Lock
+  Award
 } from 'lucide-react';
-import { MOCK_ORDERS, MOCK_CURRENT_USER, MOCK_WRITERS } from '@/lib/mock-data';
-import { formatCurrency, formatDate, formatTimeAgo } from '@/lib/utils';
+import { MOCK_ORDERS } from '@/lib/mock-data';
+import { formatCurrency, formatDate } from '@/lib/utils';
+import { useAuth } from '@/context/AuthContext';
+import { TurnitinReportCard } from '@/components/turnitin/TurnitinReportCard';
 
-export default function OrderWorkspacePage() {
-  const params = useParams();
-  const router = useRouter();
-  const orderId = params.id as string;
+export default function OrderWorkspacePage({ params }: { params: { id: string } }) {
+  const { user } = useAuth();
+  const order = MOCK_ORDERS.find((o) => o.id === params.id) || MOCK_ORDERS[0];
 
-  const initialOrder = MOCK_ORDERS.find(o => o.id === orderId) || MOCK_ORDERS[0];
-  const [order, setOrder] = useState(initialOrder);
-
-  // Live Chat state
   const [messages, setMessages] = useState([
     {
       id: 'msg_1',
-      sender: order.student?.full_name || 'You',
-      isMe: true,
-      text: 'Hi Dr. Emeka, I have deposited the project budget in Escrow. Please find the attached survey dataset.',
-      time: '2 hours ago',
+      sender: 'Dr. Emeka Okafor',
+      isWriter: true,
+      text: "Hello! I have started the SPSS regression analysis on your 250 survey respondents. I will deliver the descriptive tables and Chapter 4 draft tomorrow morning.",
+      timestamp: 'Yesterday at 4:30 PM',
     },
     {
       id: 'msg_2',
-      sender: order.writer?.full_name || 'Dr. Emeka Okafor',
-      isMe: false,
-      text: 'Hello Alex! I have received the dataset. Running the Cronbach Alpha reliability tests and descriptive regression models now.',
-      time: '1 hour ago',
+      sender: 'Alex Adebayo',
+      isWriter: false,
+      text: "Thank you Dr. Emeka! Please make sure to include the ANOVA hypothesis testing and format all tables in strict APA 7th edition.",
+      timestamp: 'Yesterday at 5:10 PM',
     },
     {
       id: 'msg_3',
-      sender: order.writer?.full_name || 'Dr. Emeka Okafor',
-      isMe: false,
-      text: 'I have uploaded the completed Chapter 4 & 5 draft with the SPSS output tables and Turnitin report (1.8% similarity). Please review!',
-      time: '15 mins ago',
+      sender: 'Dr. Emeka Okafor',
+      isWriter: true,
+      text: "Draft complete! I have attached Chapter 4 & 5 along with the official Turnitin Originality & AI Report (2.4% Similarity, 0% AI).",
+      timestamp: 'Today at 10:15 AM',
+      attachment: 'Chapter_4_5_Econometric_Results_Final.docx',
     },
   ]);
-  const [newMessageText, setNewMessageText] = useState('');
-  const [isEscrowReleased, setIsEscrowReleased] = useState(order.escrow_status === 'RELEASED_TO_WRITER');
-  const [isSubmittingApproval, setIsSubmittingApproval] = useState(false);
+
+  const [inputMessage, setInputMessage] = useState('');
+  const [isReleasing, setIsReleasing] = useState(false);
+  const [escrowReleased, setEscrowReleased] = useState(false);
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessageText.trim()) return;
+    if (!inputMessage.trim()) return;
 
-    const newMsg = {
-      id: `msg_${Date.now()}`,
-      sender: MOCK_CURRENT_USER.full_name,
-      isMe: true,
-      text: newMessageText,
-      time: 'Just now',
-    };
-
-    setMessages([...messages, newMsg]);
-    setNewMessageText('');
+    setMessages([
+      ...messages,
+      {
+        id: `msg_${Date.now()}`,
+        sender: user?.full_name || 'Student',
+        isWriter: user?.role === 'WRITER',
+        text: inputMessage,
+        timestamp: 'Just now',
+      },
+    ]);
+    setInputMessage('');
   };
 
-  const handleApproveDeliverable = async () => {
-    const confirmRelease = window.confirm(
-      `Release ${formatCurrency(order.budget)} from Escrow to ${order.writer?.full_name}? This action completes the project.`
-    );
-    if (!confirmRelease) return;
-
-    setIsSubmittingApproval(true);
-    await new Promise(resolve => setTimeout(resolve, 1200));
-    setIsSubmittingApproval(false);
-    setIsEscrowReleased(true);
-    setOrder({
-      ...order,
-      status: 'COMPLETED',
-      escrow_status: 'RELEASED_TO_WRITER',
-    });
-    alert(`Escrow funds successfully released to ${order.writer?.full_name}! Order marked as COMPLETED.`);
-  };
-
-  const handleRequestRevision = () => {
-    const reason = window.prompt('Please enter the specific revision points for the writer:');
-    if (reason) {
-      setMessages([
-        ...messages,
-        {
-          id: `msg_${Date.now()}`,
-          sender: MOCK_CURRENT_USER.full_name,
-          isMe: true,
-          text: `[REVISION REQUESTED]: ${reason}`,
-          time: 'Just now',
-        },
-      ]);
-      alert('Revision request sent directly to writer.');
+  const handleReleaseEscrow = () => {
+    if (confirm(`Are you sure you want to release ${formatCurrency(order.budget)} from Escrow to the Writer? This action is final.`)) {
+      setIsReleasing(true);
+      setTimeout(() => {
+        setIsReleasing(false);
+        setEscrowReleased(true);
+        alert('Escrow released successfully! Writer wallet credited.');
+      }, 1500);
     }
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
-      
-      {/* Back to Orders */}
-      <button
-        onClick={() => router.push('/dashboard')}
-        className="inline-flex items-center gap-2 text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors"
-      >
-        <ArrowLeft className="w-4 h-4" />
-        Back to Dashboard Orders
-      </button>
-
-      {/* Order Status Header */}
-      <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-sm space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <span className="px-2.5 py-0.5 rounded-md bg-slate-100 text-slate-700 font-mono text-xs font-bold">
-                Order #{order.id}
-              </span>
-              <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                order.status === 'COMPLETED'
-                  ? 'bg-emerald-100 text-emerald-800'
-                  : 'bg-indigo-100 text-indigo-800'
-              }`}>
-                {order.status}
-              </span>
-            </div>
-            <h1 className="text-xl sm:text-2xl font-black text-slate-900 leading-snug">
-              {order.title}
-            </h1>
-          </div>
-
-          {/* Escrow Status Pill */}
-          <div className="flex items-center gap-3 bg-emerald-50 border border-emerald-200 px-4 py-2.5 rounded-2xl">
-            <ShieldCheck className="w-6 h-6 text-emerald-600 shrink-0" />
-            <div>
-              <p className="text-[10px] uppercase font-bold text-emerald-800 tracking-wider">
-                Escrow Status
-              </p>
-              <p className="text-sm font-black text-emerald-950">
-                {isEscrowReleased ? 'RELEASED TO WRITER' : 'HELD IN ESCROW VAULT'}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Milestone Steps Progress Bar */}
-        <div className="pt-4 border-t border-slate-100 grid grid-cols-2 sm:grid-cols-4 gap-4 text-center text-xs">
-          <div className="p-2.5 rounded-xl bg-emerald-50 text-emerald-800 font-bold border border-emerald-200">
-            ✓ 1. Escrow Funded ({formatCurrency(order.budget)})
-          </div>
-          <div className="p-2.5 rounded-xl bg-emerald-50 text-emerald-800 font-bold border border-emerald-200">
-            ✓ 2. Writer Assigned
-          </div>
-          <div className="p-2.5 rounded-xl bg-indigo-50 text-indigo-800 font-bold border border-indigo-200">
-            3. Draft Submitted
-          </div>
-          <div className={`p-2.5 rounded-xl font-bold border ${
-            isEscrowReleased
-              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-              : 'bg-slate-50 text-slate-400 border-slate-200'
-          }`}>
-            {isEscrowReleased ? '✓ 4. Escrow Released' : '4. Client Approval'}
-          </div>
-        </div>
-      </div>
-
-      {/* Main Grid (Deliverables & Details + Live Chat) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+    <div className="min-h-screen bg-slate-50/50 py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
         
-        {/* Left 2 Cols: Deliverables & Order Instructions */}
-        <div className="lg:col-span-2 space-y-6">
-          
-          {/* Latest Deliverable Box */}
-          <div className="bg-white rounded-3xl p-6 sm:p-8 border-2 border-primary-200 shadow-md space-y-6">
-            <div className="flex items-center justify-between">
+        {/* Navigation & Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <Link
+              href="/dashboard"
+              className="p-2 rounded-xl bg-white border border-slate-200 text-slate-600 hover:text-slate-900 shadow-xs"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </Link>
+            <div>
               <div className="flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-primary-600" />
-                <h3 className="font-extrabold text-slate-900 text-lg">
-                  Submitted Deliverables & Final Draft
-                </h3>
+                <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-primary-100 text-primary-800">
+                  {order.service_type}
+                </span>
+                <span className="text-xs text-slate-400">Order ID: #{order.id}</span>
               </div>
-              <span className="text-xs font-bold bg-primary-50 text-primary-700 px-3 py-1 rounded-full">
-                Version 1.0 (Final Draft)
-              </span>
+              <h1 className="text-xl sm:text-2xl font-black text-slate-900 mt-0.5">
+                {order.title}
+              </h1>
             </div>
+          </div>
 
-            {/* Deliverable File Items */}
-            <div className="space-y-3">
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-primary-100 text-primary-700 flex items-center justify-center font-bold text-xs">
-                    DOCX
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-slate-900">
-                      Chapter_4_and_5_Fintech_Adoption_Empirical_Findings.docx
-                    </p>
-                    <p className="text-xs text-slate-500">4.2 MB • 18 Pages with SPSS Graphs & Tables</p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => alert('Downloading deliverable file...')}
-                  className="px-4 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-100 font-bold text-xs text-slate-700 flex items-center gap-1.5 shadow-xs"
-                >
-                  <Download className="w-4 h-4" /> Download
-                </button>
-              </div>
-
-              {/* Plagiarism & AI Report */}
-              <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
-                    <CheckCircle2 className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-emerald-950">
-                      Turnitin Originality Report: <span className="text-emerald-700">1.8% Similarity</span>
-                    </p>
-                    <p className="text-xs text-emerald-800">AI Detection Score: 0% • 100% Human Written</p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => alert('Opening Turnitin PDF report...')}
-                  className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white font-bold text-xs hover:bg-emerald-700"
-                >
-                  View Report
-                </button>
-              </div>
+          <div className="flex items-center gap-3">
+            <div className="text-right">
+              <span className="text-[10px] font-bold text-slate-400 uppercase block">Escrow Amount</span>
+              <p className="text-lg font-black text-emerald-700">{formatCurrency(order.budget)}</p>
             </div>
-
-            {/* Client Approval Actions */}
-            {!isEscrowReleased ? (
-              <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center gap-3">
-                <button
-                  onClick={handleApproveDeliverable}
-                  disabled={isSubmittingApproval}
-                  className="w-full sm:flex-1 py-3.5 px-6 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm shadow-lg shadow-emerald-600/30 transition-all flex items-center justify-center gap-2"
-                >
-                  <ThumbsUp className="w-4 h-4" />
-                  Approve Deliverable & Release Escrow ({formatCurrency(order.budget)})
-                </button>
-
-                <button
-                  onClick={handleRequestRevision}
-                  className="w-full sm:w-auto py-3.5 px-5 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-50 font-bold text-xs transition-colors flex items-center justify-center gap-1.5"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  Request Free Revision
-                </button>
-              </div>
+            {!escrowReleased ? (
+              <button
+                onClick={handleReleaseEscrow}
+                disabled={isReleasing}
+                className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md shadow-emerald-600/20 transition-all flex items-center gap-1.5"
+              >
+                <ShieldCheck className="w-4 h-4" />
+                {isReleasing ? 'Releasing Funds...' : 'Approve & Release Escrow'}
+              </button>
             ) : (
-              <div className="p-4 rounded-2xl bg-emerald-100 text-emerald-900 font-bold text-xs text-center">
-                🎉 This project is marked COMPLETED and escrow funds have been transferred to the writer.
-              </div>
+              <span className="px-4 py-2 rounded-xl bg-emerald-100 text-emerald-800 text-xs font-black flex items-center gap-1">
+                <CheckCircle2 className="w-4 h-4" /> Escrow Paid Out
+              </span>
             )}
           </div>
-
-          {/* Original Order Guidelines */}
-          <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-sm space-y-4">
-            <h3 className="font-bold text-slate-900 text-base">Project Requirements</h3>
-            
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-              <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
-                <span className="text-slate-400 block text-[10px] uppercase font-bold">Academic Level</span>
-                <span className="font-bold text-slate-800">{order.academic_level}</span>
-              </div>
-              <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
-                <span className="text-slate-400 block text-[10px] uppercase font-bold">Citation Style</span>
-                <span className="font-bold text-slate-800">{order.citation_style}</span>
-              </div>
-              <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
-                <span className="text-slate-400 block text-[10px] uppercase font-bold">Length</span>
-                <span className="font-bold text-slate-800">{order.pages_count} Pages</span>
-              </div>
-              <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
-                <span className="text-slate-400 block text-[10px] uppercase font-bold">Deadline</span>
-                <span className="font-bold text-slate-800">{formatDate(order.deadline)}</span>
-              </div>
-            </div>
-
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 text-xs text-slate-700 leading-relaxed">
-              <span className="font-bold text-slate-900 block mb-1">Student Instructions:</span>
-              {order.instructions}
-            </div>
-          </div>
-
         </div>
 
-        {/* Right Col: Real-time Direct Chat Box */}
-        <div className="space-y-6">
-          <div className="bg-white rounded-3xl border border-slate-200/80 shadow-md flex flex-col h-[650px] overflow-hidden sticky top-24">
-            
-            {/* Chat Header */}
-            <div className="p-4 border-b border-slate-100 bg-slate-50/80 flex items-center gap-3">
-              <img
-                src={order.writer?.avatar_url || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=100'}
-                alt={order.writer?.full_name}
-                className="w-10 h-10 rounded-full object-cover ring-2 ring-primary-100"
-              />
-              <div className="flex-1">
-                <p className="text-sm font-bold text-slate-900 flex items-center gap-1">
-                  {order.writer?.full_name || 'Academic Writer'}
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                </p>
-                <p className="text-[11px] text-slate-500">Active Researcher • Online</p>
+        {/* Milestone Tracker */}
+        <div className="p-6 bg-white rounded-3xl border border-slate-200/80 shadow-xs">
+          <div className="grid grid-cols-4 gap-2 text-center">
+            <div className="space-y-1">
+              <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 font-bold text-xs flex items-center justify-center mx-auto">
+                ✓
               </div>
+              <p className="text-xs font-bold text-slate-800">1. Escrow Funded</p>
             </div>
 
-            {/* Chat Message Stream */}
-            <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-slate-50/40">
-              {messages.map((m) => (
+            <div className="space-y-1">
+              <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 font-bold text-xs flex items-center justify-center mx-auto">
+                ✓
+              </div>
+              <p className="text-xs font-bold text-slate-800">2. Writing In Progress</p>
+            </div>
+
+            <div className="space-y-1">
+              <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 font-bold text-xs flex items-center justify-center mx-auto">
+                3
+              </div>
+              <p className="text-xs font-bold text-indigo-700">3. Turnitin Review</p>
+            </div>
+
+            <div className="space-y-1">
+              <div className={`w-8 h-8 rounded-full font-bold text-xs flex items-center justify-center mx-auto ${
+                escrowReleased ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-400'
+              }`}>
+                4
+              </div>
+              <p className="text-xs font-bold text-slate-400">4. Escrow Release</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Main Grid: Chat & Deliverables */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          
+          {/* Left Column: Realtime Chat Workspace */}
+          <div className="lg:col-span-2 bg-white rounded-3xl border border-slate-200/80 shadow-xs flex flex-col h-[600px] overflow-hidden">
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <img
+                  src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=250"
+                  alt="Writer"
+                  className="w-10 h-10 rounded-full object-cover ring-2 ring-emerald-100"
+                />
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Dr. Emeka Okafor</h3>
+                  <p className="text-xs text-emerald-600 font-semibold flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> Verified Academic Researcher
+                  </p>
+                </div>
+              </div>
+              <span className="text-xs text-slate-400">Direct End-to-End Chat</span>
+            </div>
+
+            {/* Chat Messages */}
+            <div className="flex-1 p-6 overflow-y-auto space-y-4">
+              {messages.map((msg) => (
                 <div
-                  key={m.id}
-                  className={`flex flex-col ${m.isMe ? 'items-end' : 'items-start'}`}
+                  key={msg.id}
+                  className={`flex flex-col ${msg.isWriter ? 'items-start' : 'items-end'}`}
                 >
+                  <span className="text-[10px] text-slate-400 mb-1 px-1">{msg.sender} • {msg.timestamp}</span>
                   <div
-                    className={`max-w-[85%] p-3 rounded-2xl text-xs leading-relaxed ${
-                      m.isMe
-                        ? 'bg-primary-600 text-white rounded-br-xs shadow-sm'
-                        : 'bg-white text-slate-800 border border-slate-200 rounded-bl-xs shadow-xs'
+                    className={`max-w-md p-4 rounded-2xl text-xs sm:text-sm leading-relaxed ${
+                      msg.isWriter
+                        ? 'bg-slate-100 text-slate-900 rounded-tl-none'
+                        : 'bg-primary-600 text-white rounded-tr-none shadow-md shadow-primary-600/10'
                     }`}
                   >
-                    <p>{m.text}</p>
+                    {msg.text}
+                    {msg.attachment && (
+                      <div className="mt-3 p-2.5 rounded-xl bg-white text-slate-900 flex items-center justify-between border border-slate-200 shadow-xs">
+                        <div className="flex items-center gap-2">
+                          <FileText className="w-4 h-4 text-primary-600" />
+                          <span className="text-xs font-bold truncate max-w-[200px]">{msg.attachment}</span>
+                        </div>
+                        <button className="p-1 rounded-lg hover:bg-slate-100 text-slate-600">
+                          <Download className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
                   </div>
-                  <span className="text-[10px] text-slate-400 mt-1 px-1">{m.time}</span>
                 </div>
               ))}
             </div>
 
-            {/* Chat Input Bar */}
-            <form onSubmit={handleSendMessage} className="p-3 border-t border-slate-100 bg-white flex items-center gap-2">
+            {/* Message Input Form */}
+            <form onSubmit={handleSendMessage} className="p-4 border-t border-slate-100 flex items-center gap-2">
+              <button
+                type="button"
+                className="p-2.5 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+              >
+                <Paperclip className="w-5 h-5" />
+              </button>
               <input
                 type="text"
-                value={newMessageText}
-                onChange={(e) => setNewMessageText(e.target.value)}
-                placeholder="Type message to writer..."
-                className="flex-1 py-2.5 px-3.5 rounded-xl border border-slate-200 text-xs font-medium outline-none focus:border-primary-500 bg-slate-50 focus:bg-white"
+                value={inputMessage}
+                onChange={(e) => setInputMessage(e.target.value)}
+                placeholder="Type message or request a revision..."
+                className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 text-sm outline-none focus:border-primary-500"
               />
               <button
                 type="submit"
-                className="p-2.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white shadow-sm transition-colors"
+                className="p-2.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white shadow-md shadow-primary-600/20 transition-all"
               >
                 <Send className="w-4 h-4" />
               </button>
             </form>
+          </div>
+
+          {/* Right Column: Turnitin Report & Order Details */}
+          <div className="space-y-6">
+            
+            {/* Live Turnitin Originality Report Card */}
+            <TurnitinReportCard
+              similarityScore={2.4}
+              aiScore={0.0}
+              fileName="Chapter_4_5_Econometric_Results_Final.docx"
+            />
+
+            {/* Order Specification Summary */}
+            <div className="p-6 bg-white rounded-3xl border border-slate-200/80 shadow-xs space-y-4 text-xs">
+              <h4 className="text-xs font-black uppercase tracking-wider text-slate-400">
+                Project Requirements
+              </h4>
+              <div className="space-y-2.5">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Subject Area:</span>
+                  <span className="font-bold text-slate-900">{order.subject_area}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Academic Level:</span>
+                  <span className="font-bold text-slate-900">{order.academic_level}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Page Count:</span>
+                  <span className="font-bold text-slate-900">{order.pages_count} Pages (~{order.word_count} words)</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Citation Format:</span>
+                  <span className="font-bold text-slate-900">{order.citation_style}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Deadline:</span>
+                  <span className="font-bold text-slate-900">{formatDate(order.deadline)}</span>
+                </div>
+              </div>
+
+              <div className="pt-3 border-t border-slate-100">
+                <span className="text-slate-500 font-bold block mb-1">Instructions:</span>
+                <p className="text-slate-700 leading-relaxed text-[11px] bg-slate-50 p-3 rounded-xl">
+                  {order.instructions}
+                </p>
+              </div>
+            </div>
 
           </div>
+
         </div>
 
       </div>
-
     </div>
   );
 }
