@@ -34,9 +34,9 @@ const SERVICE_TYPES = [
 ];
 
 const ACADEMIC_LEVELS = [
-  { id: 'undergrad', name: 'Undergraduate (100L - 500L)', rate: 1500 },
-  { id: 'postgrad', name: 'Post-Graduate (Masters / MBA / M.Sc)', rate: 2500 },
-  { id: 'phd', name: 'Doctorate / Ph.D / Professional', rate: 4000 },
+  { id: 'undergrad', name: 'Undergraduate (100L - 500L)', rate: 1000 },
+  { id: 'postgrad', name: 'Post-Graduate (Masters / MBA / M.Sc)', rate: 2000 },
+  { id: 'phd', name: 'Doctorate / Ph.D / Professional', rate: 3000 },
 ];
 
 const URGENCY_OPTIONS = [
@@ -78,8 +78,8 @@ function OrderWizardContent() {
   const isSlideService = selectedServiceObj.id === 'slides';
   const unitCount = isSlideService ? slidesCount : pagesCount;
   
-  // Base cost calculation
-  const baseRate = isSlideService ? 1200 : selectedLevelObj.rate;
+  // Base cost calculation with updated rates: 1k (undergrad), 2k (postgrad), 3k (phd)
+  const baseRate = isSlideService ? 1000 : selectedLevelObj.rate;
   const rawCost = unitCount * baseRate * selectedServiceObj.multiplier;
   const speakerNotesFee = isSlideService && includeSpeakerNotes ? slidesCount * 300 : 0;
   
@@ -153,23 +153,23 @@ function OrderWizardContent() {
             {/* Step 2: Academic Level & Scope (Pages / Slides) */}
             <div className="p-6 bg-white rounded-3xl border border-slate-200/80 shadow-xs space-y-4">
               <label className="text-xs font-black uppercase tracking-wider text-slate-700 block">
-                2. Academic Level & Scope
+                2. Academic Level & Rates
               </label>
               
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                 {ACADEMIC_LEVELS.map((level) => (
                   <button
                     key={level.id}
                     type="button"
                     onClick={() => setAcademicLevel(level.id)}
-                    className={`p-3 rounded-xl border text-center transition-all ${
+                    className={`p-3.5 rounded-2xl border-2 text-center transition-all ${
                       academicLevel === level.id
-                        ? 'border-emerald-600 bg-emerald-50/60 text-emerald-900 font-bold'
-                        : 'border-slate-200 text-slate-600 text-xs'
+                        ? 'border-emerald-600 bg-emerald-50/70 text-emerald-950 font-bold shadow-xs'
+                        : 'border-slate-200 hover:border-slate-300 text-slate-700 text-xs'
                     }`}
                   >
-                    <span className="block text-xs font-bold">{level.name.split('(')[0]}</span>
-                    <span className="text-[10px] text-slate-400 font-medium">{formatCurrency(level.rate)}/pg</span>
+                    <span className="block text-xs font-black">{level.name.split('(')[0]}</span>
+                    <span className="text-sm font-black text-emerald-700 block mt-0.5">{formatCurrency(level.rate)}<span className="text-[10px] font-normal text-slate-500"> / pg</span></span>
                   </button>
                 ))}
               </div>
@@ -320,6 +320,11 @@ function OrderWizardContent() {
                 </div>
 
                 <div className="flex justify-between text-slate-600">
+                  <span>Academic Level:</span>
+                  <span className="font-bold text-slate-900">{selectedLevelObj.name.split('(')[0]}</span>
+                </div>
+
+                <div className="flex justify-between text-slate-600">
                   <span>Scope:</span>
                   <span className="font-bold text-slate-900">
                     {isSlideService ? `${slidesCount} Slides` : `${pagesCount} Pages`}
@@ -328,7 +333,7 @@ function OrderWizardContent() {
 
                 <div className="flex justify-between text-slate-600">
                   <span>Base Rate:</span>
-                  <span className="font-medium text-slate-900">
+                  <span className="font-bold text-emerald-700">
                     {formatCurrency(baseRate)} / {isSlideService ? 'slide' : 'page'}
                   </span>
                 </div>

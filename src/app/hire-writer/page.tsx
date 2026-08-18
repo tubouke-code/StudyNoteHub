@@ -27,61 +27,59 @@ const SERVICES = [
     icon: '📊',
     title: 'Slide Presentation & Defense Decks',
     desc: 'Professional PowerPoint / Google Slides with executive slide layouts, charts, and word-for-word speaker defense notes.',
-    startingPrice: 1200,
+    startingPrice: 1000,
     unit: 'slide',
     badge: 'Popular',
     href: '/hire-writer/new?service=slides',
   },
   {
-    icon: '🎓',
-    title: 'Final Year Capstone Projects & Theses',
-    desc: 'Complete Chapter 1 to 5 project writing with rigorous methodology, literature reviews, and 100% Turnitin similarity certification.',
-    startingPrice: 1950,
+    icon: '📝',
+    title: 'Undergraduate Term Papers & Essays',
+    desc: 'Structured academic arguments in APA 7th, Harvard, IEEE, or OSCOLA citation formats. 100% human-written.',
+    startingPrice: 1000,
     unit: 'page',
-    badge: 'High Demand',
+    badge: 'Undergrad (1k/pg)',
+    href: '/hire-writer/new?service=essay',
+  },
+  {
+    icon: '🎓',
+    title: 'Post-Graduate Theses & Dissertations',
+    desc: 'Advanced research projects, literature reviews, and empirical methodology for Masters, MBA, and M.Sc candidates.',
+    startingPrice: 2000,
+    unit: 'page',
+    badge: 'Postgrad (2k/pg)',
     href: '/hire-writer/new?service=project',
   },
   {
     icon: '📈',
     title: 'Data Analysis & Empirical Statistics',
     desc: 'Multiple regression, ANOVA, econometric time-series models using SPSS, STATA, Python, R, and EViews.',
-    startingPrice: 2500,
+    startingPrice: 2000,
     unit: 'page',
     badge: 'Specialized',
     href: '/hire-writer/new?service=data_analysis',
   },
   {
-    icon: '📝',
-    title: 'Term Papers, Essays & Assignments',
-    desc: 'Structured academic arguments in APA 7th, Harvard, IEEE, or OSCOLA citation formats. Zero plagiarism guaranteed.',
-    startingPrice: 1500,
+    icon: '📑',
+    title: 'Doctoral / Ph.D & Professional Papers',
+    desc: 'High-impact doctoral synopses, journal articles, and theoretical frameworks for Ph.D candidates.',
+    startingPrice: 3000,
     unit: 'page',
-    badge: '24hr Express',
-    href: '/hire-writer/new?service=essay',
+    badge: 'Doctorate (3k/pg)',
+    href: '/hire-writer/new?service=thesis',
   },
   {
     icon: '✨',
     title: 'Proofreading & Turnitin Paraphrasing',
     desc: 'Grammar polish, style refinement, and rewriting to reduce similarity index below 10% on Turnitin.',
-    startingPrice: 1050,
+    startingPrice: 700,
     unit: 'page',
     badge: 'Quick Turnaround',
     href: '/hire-writer/new?service=proofreading',
   },
-  {
-    icon: '📑',
-    title: 'Dissertation Proposals & Synopses',
-    desc: 'High-impact research concept notes, problem statements, and theoretical frameworks for Masters and PhD candidates.',
-    startingPrice: 3500,
-    unit: 'page',
-    badge: 'Postgrad',
-    href: '/hire-writer/new?service=thesis',
-  },
 ];
 
 export default function HireWriterPage() {
-  const [selectedDiscipline, setSelectedDiscipline] = useState('All');
-
   return (
     <div className="min-h-screen bg-slate-50/50 py-8 sm:py-12">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
@@ -98,7 +96,7 @@ export default function HireWriterPage() {
           </h1>
 
           <p className="text-sm sm:text-base text-slate-600 leading-relaxed">
-            Get your final year projects, SPSS data analysis, seminar papers, and defense presentation slides prepared by top university researchers. Your funds stay safe in Escrow until you approve the work.
+            Transparent pricing: <strong>₦1,000/page</strong> for Undergraduates, <strong>₦2,000/page</strong> for Masters/Postgraduates, and <strong>₦3,000/page</strong> for PhD/Doctorates. Your funds stay safe in Escrow until you approve the work.
           </p>
 
           <div className="flex flex-wrap items-center justify-center gap-4 pt-2">
@@ -107,7 +105,7 @@ export default function HireWriterPage() {
               className="px-6 py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-lg shadow-emerald-600/30 transition-all flex items-center gap-2"
             >
               <PenTool className="w-4 h-4" />
-              Order Custom Project / Slides
+              Calculate & Order Project / Slides
               <ArrowRight className="w-4 h-4" />
             </Link>
 
@@ -120,7 +118,7 @@ export default function HireWriterPage() {
           </div>
         </div>
 
-        {/* Services Matrix with Slide Presentations */}
+        {/* Services Matrix with Updated Rates */}
         <div id="services" className="space-y-6">
           <div className="text-center space-y-1">
             <h2 className="text-2xl font-black text-slate-900">Academic & Presentation Services</h2>
