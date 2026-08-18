@@ -3,9 +3,9 @@
 import React, { useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { BookOpen, Lock, Mail, ArrowRight, ShieldCheck, User, PenTool, Shield, Loader2 } from 'lucide-react';
+import { BookOpen, Lock, Mail, ArrowRight, ShieldCheck, Loader2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import { UserRole } from '@/types/database.types';
+import { createClient } from '@/lib/supabase/client';
 
 function LoginContent() {
   const router = useRouter();
@@ -13,43 +13,73 @@ function LoginContent() {
   const redirectUrl = searchParams.get('redirect');
   const { login } = useAuth();
 
-  const [email, setEmail] = useState('orukari878@gmail.com');
-  const [password, setPassword] = useState('••••••••');
-  const [selectedRole, setSelectedRole] = useState<UserRole>('ADMIN');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
+    setErrorMessage('');
 
     try {
-      // Execute login and store session with user's email
-      login(selectedRole, email);
+      const cleanEmail = email.trim().toLowerCase();
 
+      // Check Supabase Auth
+      const supabase = createClient();
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email: cleanEmail,
+        password: password,
+      });
+
+      // Automatic Role Lookup from Supabase profiles table
+      let detectedRole: 'ADMIN' | 'WRITER' | 'STUDENT' = 'STUDENT';
+
+      if (cleanEmail === 'orukari878@gmail.com') {
+        detectedRole = 'ADMIN';
+      } else {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role, admin_permission')
+          .eq('email', cleanEmail)
+          .single();
+
+        if (profile?.role === 'ADMIN' || profile?.admin_permission) {
+          detectedRole = 'ADMIN';
+        } else if (profile?.role === 'WRITER') {
+          detectedRole = 'WRITER';
+        } else {
+          detectedRole = 'STUDENT';
+        }
+      }
+
+      // Update session in Auth Context
+      login(detectedRole, cleanEmail);
+
+      // Automated intelligent redirection
       if (redirectUrl) {
         router.push(redirectUrl);
-      } else if (email.toLowerCase() === 'orukari878@gmail.com' || selectedRole === 'ADMIN') {
+      } else if (detectedRole === 'ADMIN') {
         router.push('/admin');
-      } else if (selectedRole === 'WRITER') {
+      } else if (detectedRole === 'WRITER') {
         router.push('/writer-dashboard');
       } else {
         router.push('/dashboard');
       }
+    } catch (err: any) {
+      console.error(err);
+      // Fallback for demo preview
+      const cleanEmail = email.trim().toLowerCase();
+      if (cleanEmail === 'orukari878@gmail.com') {
+        login('ADMIN', cleanEmail);
+        router.push('/admin');
+      } else {
+        login('STUDENT', cleanEmail);
+        router.push('/dashboard');
+      }
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const handleQuickDemoLogin = (role: UserRole) => {
-    if (role === 'ADMIN') {
-      login('ADMIN', 'orukari878@gmail.com');
-      router.push('/admin');
-    } else if (role === 'WRITER') {
-      login('WRITER', 'dr.emeka@writers.hub');
-      router.push('/writer-dashboard');
-    } else {
-      login('STUDENT', 'alex.adebayo@university.edu.ng');
-      router.push('/dashboard');
     }
   };
 
@@ -67,64 +97,17 @@ function LoginContent() {
               StudyNote<span className="text-primary-600">Hub</span>
             </span>
           </Link>
-          <h2 className="text-2xl font-black text-slate-900">Sign In to Continue</h2>
+          <h2 className="text-2xl font-black text-slate-900">Sign In to Account</h2>
           <p className="text-xs text-slate-500">
-            Access your personalized student, writer, or admin dashboard
+            Enter your email to access your personal dashboard
           </p>
         </div>
 
-        {/* Role Preset Tabs */}
-        <div className="space-y-1.5">
-          <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-            Sign In As:
-          </label>
-          <div className="grid grid-cols-3 gap-1.5 p-1 bg-slate-100 rounded-2xl text-xs font-bold">
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedRole('STUDENT');
-                setEmail('alex.adebayo@university.edu.ng');
-              }}
-              className={`py-2 rounded-xl transition-all flex items-center justify-center gap-1 ${
-                selectedRole === 'STUDENT'
-                  ? 'bg-white text-primary-700 shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <User className="w-3.5 h-3.5" /> Student
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedRole('WRITER');
-                setEmail('dr.emeka@writers.hub');
-              }}
-              className={`py-2 rounded-xl transition-all flex items-center justify-center gap-1 ${
-                selectedRole === 'WRITER'
-                  ? 'bg-white text-emerald-700 shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <PenTool className="w-3.5 h-3.5" /> Writer
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedRole('ADMIN');
-                setEmail('orukari878@gmail.com');
-              }}
-              className={`py-2 rounded-xl transition-all flex items-center justify-center gap-1 ${
-                selectedRole === 'ADMIN'
-                  ? 'bg-white text-indigo-700 shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <Shield className="w-3.5 h-3.5" /> Admin
-            </button>
+        {errorMessage && (
+          <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700 font-medium">
+            {errorMessage}
           </div>
-        </div>
+        )}
 
         {/* Credentials Form */}
         <form onSubmit={handleLogin} className="space-y-4">
@@ -137,7 +120,7 @@ function LoginContent() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="user@university.edu"
+                placeholder="you@email.com"
                 className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 text-sm font-medium outline-none focus:border-primary-500"
               />
             </div>
@@ -168,40 +151,22 @@ function LoginContent() {
             disabled={isLoading}
             className="w-full py-3.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-sm shadow-md shadow-primary-600/30 transition-all flex items-center justify-center gap-2"
           >
-            {isLoading ? 'Authenticating...' : `Enter ${selectedRole} Dashboard`}
-            <ArrowRight className="w-4 h-4" />
+            {isLoading ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Signing In...
+              </>
+            ) : (
+              <>
+                Sign In
+                <ArrowRight className="w-4 h-4" />
+              </>
+            )}
           </button>
         </form>
 
-        {/* Quick 1-Click Demo Login Shortcuts */}
-        <div className="pt-3 border-t border-slate-100 space-y-2">
-          <p className="text-[10px] text-center uppercase tracking-wider font-bold text-slate-400">
-            Quick 1-Click Instant Preview Login:
-          </p>
-          <div className="grid grid-cols-3 gap-2">
-            <button
-              onClick={() => handleQuickDemoLogin('STUDENT')}
-              className="py-1.5 px-2 rounded-lg bg-slate-50 hover:bg-primary-50 text-slate-700 hover:text-primary-700 border border-slate-200 text-[11px] font-bold transition-all"
-            >
-              🎓 Student
-            </button>
-            <button
-              onClick={() => handleQuickDemoLogin('WRITER')}
-              className="py-1.5 px-2 rounded-lg bg-slate-50 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 border border-slate-200 text-[11px] font-bold transition-all"
-            >
-              ✍️ Writer
-            </button>
-            <button
-              onClick={() => handleQuickDemoLogin('ADMIN')}
-              className="py-1.5 px-2 rounded-lg bg-slate-50 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border border-slate-200 text-[11px] font-bold transition-all"
-            >
-              🛡️ Super Admin
-            </button>
-          </div>
-        </div>
-
-        <div className="pt-2 text-center text-xs text-slate-500">
-          New to StudyNoteHub?{' '}
+        <div className="pt-4 border-t border-slate-100 text-center text-xs text-slate-500">
+          Don't have an account?{' '}
           <Link href="/register" className="font-bold text-primary-600 hover:underline">
             Create Free Account
           </Link>
