@@ -13,9 +13,9 @@ function LoginContent() {
   const redirectUrl = searchParams.get('redirect');
   const { login } = useAuth();
 
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [selectedRole, setSelectedRole] = useState<UserRole>('STUDENT');
+  const [email, setEmail] = useState('orukari878@gmail.com');
+  const [password, setPassword] = useState('••••••••');
+  const [selectedRole, setSelectedRole] = useState<UserRole>('ADMIN');
   const [isLoading, setIsLoading] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -23,12 +23,12 @@ function LoginContent() {
     setIsLoading(true);
 
     try {
-      // Execute login and store session
-      login(selectedRole);
+      // Execute login and store session with user's email
+      login(selectedRole, email);
 
       if (redirectUrl) {
         router.push(redirectUrl);
-      } else if (selectedRole === 'ADMIN') {
+      } else if (email.toLowerCase() === 'orukari878@gmail.com' || selectedRole === 'ADMIN') {
         router.push('/admin');
       } else if (selectedRole === 'WRITER') {
         router.push('/writer-dashboard');
@@ -41,10 +41,16 @@ function LoginContent() {
   };
 
   const handleQuickDemoLogin = (role: UserRole) => {
-    login(role);
-    if (role === 'ADMIN') router.push('/admin');
-    else if (role === 'WRITER') router.push('/writer-dashboard');
-    else router.push('/dashboard');
+    if (role === 'ADMIN') {
+      login('ADMIN', 'orukari878@gmail.com');
+      router.push('/admin');
+    } else if (role === 'WRITER') {
+      login('WRITER', 'dr.emeka@writers.hub');
+      router.push('/writer-dashboard');
+    } else {
+      login('STUDENT', 'alex.adebayo@university.edu.ng');
+      router.push('/dashboard');
+    }
   };
 
   return (
@@ -75,7 +81,10 @@ function LoginContent() {
           <div className="grid grid-cols-3 gap-1.5 p-1 bg-slate-100 rounded-2xl text-xs font-bold">
             <button
               type="button"
-              onClick={() => setSelectedRole('STUDENT')}
+              onClick={() => {
+                setSelectedRole('STUDENT');
+                setEmail('alex.adebayo@university.edu.ng');
+              }}
               className={`py-2 rounded-xl transition-all flex items-center justify-center gap-1 ${
                 selectedRole === 'STUDENT'
                   ? 'bg-white text-primary-700 shadow-sm'
@@ -87,7 +96,10 @@ function LoginContent() {
 
             <button
               type="button"
-              onClick={() => setSelectedRole('WRITER')}
+              onClick={() => {
+                setSelectedRole('WRITER');
+                setEmail('dr.emeka@writers.hub');
+              }}
               className={`py-2 rounded-xl transition-all flex items-center justify-center gap-1 ${
                 selectedRole === 'WRITER'
                   ? 'bg-white text-emerald-700 shadow-sm'
@@ -99,7 +111,10 @@ function LoginContent() {
 
             <button
               type="button"
-              onClick={() => setSelectedRole('ADMIN')}
+              onClick={() => {
+                setSelectedRole('ADMIN');
+                setEmail('orukari878@gmail.com');
+              }}
               className={`py-2 rounded-xl transition-all flex items-center justify-center gap-1 ${
                 selectedRole === 'ADMIN'
                   ? 'bg-white text-indigo-700 shadow-sm'
@@ -120,7 +135,7 @@ function LoginContent() {
               <input
                 type="email"
                 required
-                value={email || (selectedRole === 'ADMIN' ? 'admin.super@studynotehub.com' : selectedRole === 'WRITER' ? 'dr.emeka@writers.hub' : 'alex.adebayo@university.edu.ng')}
+                value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="user@university.edu"
                 className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 text-sm font-medium outline-none focus:border-primary-500"
@@ -140,7 +155,7 @@ function LoginContent() {
               <input
                 type="password"
                 required
-                value={password || '••••••••'}
+                value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
                 className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 text-sm font-medium outline-none focus:border-primary-500"
@@ -180,7 +195,7 @@ function LoginContent() {
               onClick={() => handleQuickDemoLogin('ADMIN')}
               className="py-1.5 px-2 rounded-lg bg-slate-50 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border border-slate-200 text-[11px] font-bold transition-all"
             >
-              🛡️ Admin
+              🛡️ Super Admin
             </button>
           </div>
         </div>

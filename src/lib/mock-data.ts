@@ -2,12 +2,12 @@ import { DocumentItem, Profile, OrderItem, Transaction, AdminUser, PayoutRequest
 
 export const MOCK_ADMINS: AdminUser[] = [
   {
-    id: 'adm_01',
-    email: 'admin.super@studynotehub.com',
-    full_name: 'Chief Admin (System Owner)',
+    id: 'adm_super_01',
+    email: 'orukari878@gmail.com',
+    full_name: 'Super Admin (Owner)',
     permission: 'SUPER_ADMIN',
     avatar_url: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=250',
-    last_login: '10 mins ago',
+    last_login: 'Active Now',
     is_active: true,
   },
   {
@@ -38,6 +38,18 @@ export const MOCK_ADMINS: AdminUser[] = [
     is_active: true,
   },
 ];
+
+export const MOCK_SUPER_ADMIN_PROFILE: Profile = {
+  id: 'usr_super_admin_orukari',
+  email: 'orukari878@gmail.com',
+  full_name: 'Super Admin',
+  role: 'ADMIN',
+  admin_permission: 'SUPER_ADMIN',
+  avatar_url: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=250',
+  wallet_balance: 500000.00,
+  is_verified_writer: true,
+  created_at: new Date().toISOString(),
+};
 
 export const MOCK_CURRENT_USER: Profile = {
   id: 'usr_student_01',
@@ -218,7 +230,7 @@ export const MOCK_DOCUMENTS: DocumentItem[] = [
     page_count: 32,
     price: 1000.00,
     downloads_count: 0,
-    status: 'PENDING', // Awaiting moderation
+    status: 'PENDING',
     rating: 5.0,
     created_at: '2025-02-18T11:00:00Z',
   },
@@ -352,7 +364,7 @@ export const MOCK_TRANSACTIONS: Transaction[] = [
   },
   {
     id: 'txn_04',
-    user_id: 'adm_01',
+    user_id: 'adm_super_01',
     amount: 5250.00,
     fee: 0.00,
     type: 'PLATFORM_FEE',

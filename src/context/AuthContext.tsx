@@ -2,13 +2,13 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Profile, UserRole } from '@/types/database.types';
-import { MOCK_CURRENT_USER, MOCK_WRITERS, MOCK_ADMINS } from '@/lib/mock-data';
+import { MOCK_CURRENT_USER, MOCK_WRITERS, MOCK_ADMINS, MOCK_SUPER_ADMIN_PROFILE } from '@/lib/mock-data';
 import { createClient } from '@/lib/supabase/client';
 
 interface AuthContextType {
   user: Profile | null;
   isLoggedIn: boolean;
-  login: (role?: UserRole) => void;
+  login: (role?: UserRole, customEmail?: string) => void;
   logout: () => void;
   switchRole: (role: UserRole) => void;
 }
@@ -20,7 +20,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
 
   useEffect(() => {
-    // Check local storage or session on mount
+    // Check local storage or active session on mount
     const savedAuth = localStorage.getItem('snh_auth_session');
     if (savedAuth) {
       try {
@@ -34,24 +34,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const login = (role: UserRole = 'STUDENT') => {
+  const login = (role: UserRole = 'STUDENT', customEmail?: string) => {
     let profileToSet: Profile;
-    if (role === 'WRITER') {
-      profileToSet = MOCK_WRITERS[0];
-    } else if (role === 'ADMIN') {
+
+    // If logging in with the owner's email or explicit ADMIN role
+    if (customEmail?.toLowerCase() === 'orukari878@gmail.com' || role === 'ADMIN') {
       profileToSet = {
-        id: MOCK_ADMINS[0].id,
-        email: MOCK_ADMINS[0].email,
-        full_name: MOCK_ADMINS[0].full_name,
-        role: 'ADMIN',
-        admin_permission: 'SUPER_ADMIN',
-        avatar_url: MOCK_ADMINS[0].avatar_url,
-        wallet_balance: 500000.00,
-        is_verified_writer: true,
-        created_at: new Date().toISOString(),
+        ...MOCK_SUPER_ADMIN_PROFILE,
+        email: customEmail || 'orukari878@gmail.com',
+      };
+    } else if (role === 'WRITER') {
+      profileToSet = {
+        ...MOCK_WRITERS[0],
+        email: customEmail || MOCK_WRITERS[0].email,
       };
     } else {
-      profileToSet = MOCK_CURRENT_USER;
+      profileToSet = {
+        ...MOCK_CURRENT_USER,
+        email: customEmail || MOCK_CURRENT_USER.email,
+      };
     }
 
     setUser(profileToSet);
@@ -66,7 +67,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const switchRole = (role: UserRole) => {
-    login(role);
+    login(role, user?.email);
   };
 
   return (
