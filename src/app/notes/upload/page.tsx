@@ -49,10 +49,11 @@ export default function UploadNotesPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadSuccess, setUploadSuccess] = useState(false);
 
-  // Creator Royalty Calculations (85% to Creator, 15% Platform)
+  // Pre-written Material Royalty Calculations (90% to Creator, 10% Platform Hosting)
   const actualPrice = isFree ? 0 : Number(price) || 0;
-  const creatorRoyaltyPerDownload = Math.round(actualPrice * 0.85);
-  const estimatedSales = 20;
+  const creatorRoyaltyPerDownload = Math.round(actualPrice * 0.90);
+  const platformHostingFee = actualPrice - creatorRoyaltyPerDownload;
+  const estimatedSales = 25;
   const estimatedTotalEarnings = creatorRoyaltyPerDownload * estimatedSales;
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -70,7 +71,6 @@ export default function UploadNotesPage() {
 
     setIsUploading(true);
     try {
-      // Simulate Upload & Moderation Queue Registration
       await new Promise((resolve) => setTimeout(resolve, 1500));
       setUploadSuccess(true);
       setTimeout(() => {
@@ -88,13 +88,13 @@ export default function UploadNotesPage() {
         {/* Header */}
         <div className="text-center space-y-2 max-w-2xl mx-auto">
           <span className="text-[11px] font-extrabold uppercase tracking-widest text-primary-600 bg-primary-50 px-3 py-1 rounded-full border border-primary-100">
-            Monetize Academic Work
+            Monetize Pre-Written Work
           </span>
           <h1 className="text-2xl sm:text-3xl font-black text-slate-900">
-            Upload & Sell Notes, Past Questions & Complete Projects
+            Upload & Sell Notes, Projects & Study Guides
           </h1>
           <p className="text-xs sm:text-sm text-slate-500">
-            Earn <strong>85% recurring royalties</strong> every time another student downloads your work.
+            Earn <strong>90% recurring royalties</strong> every time another student downloads your work (only 10% platform hosting).
           </p>
         </div>
 
@@ -105,7 +105,7 @@ export default function UploadNotesPage() {
             </div>
             <h2 className="text-2xl font-black text-slate-900">Upload Submitted for Review!</h2>
             <p className="text-xs sm:text-sm text-slate-600 max-w-md mx-auto">
-              Your material is in the <strong>Admin Moderation Queue</strong>. Once approved, it will be published to the catalog and start generating 85% royalties!
+              Your material is in the <strong>Admin Moderation Queue</strong>. Once approved, it will be published to the catalog and start generating 90% royalties!
             </p>
           </div>
         ) : (
@@ -275,11 +275,11 @@ export default function UploadNotesPage() {
               </div>
             </div>
 
-            {/* Step 4: Pricing & 85% Royalty Calculator */}
+            {/* Step 4: Pricing & 90% Royalty Calculator (10% Platform Fee) */}
             <div className="p-6 sm:p-8 bg-white rounded-3xl border border-slate-200/80 shadow-xs space-y-6">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-black uppercase tracking-wider text-slate-700">
-                  4. Set Your Price & Royalty Earnings
+                  4. Set Your Price & Royalty Earnings (90% Creator Split)
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-600">
                   <input
@@ -310,19 +310,19 @@ export default function UploadNotesPage() {
                   <div className="p-5 rounded-2xl bg-gradient-to-tr from-emerald-950 via-slate-900 to-teal-950 text-white shadow-lg space-y-3">
                     <div className="flex items-center justify-between border-b border-white/10 pb-3">
                       <div>
-                        <span className="text-[10px] uppercase font-bold text-emerald-400">Your Take-Home Cut (85%)</span>
+                        <span className="text-[10px] uppercase font-bold text-emerald-400">Your Take-Home Royalty (90%)</span>
                         <p className="text-2xl font-black text-emerald-300">
                           {formatCurrency(creatorRoyaltyPerDownload)} <span className="text-xs font-normal text-slate-300">per download</span>
                         </p>
                       </div>
                       <div className="text-right">
-                        <span className="text-[10px] uppercase font-bold text-slate-400">Platform Hosting (15%)</span>
-                        <p className="text-sm font-bold text-slate-300">{formatCurrency(actualPrice - creatorRoyaltyPerDownload)}</p>
+                        <span className="text-[10px] uppercase font-bold text-slate-400">Platform Hosting (10%)</span>
+                        <p className="text-sm font-bold text-slate-300">{formatCurrency(platformHostingFee)}</p>
                       </div>
                     </div>
 
                     <div className="flex items-center justify-between text-xs text-slate-300">
-                      <span>Estimated Passive Earnings (at ~20 downloads):</span>
+                      <span>Estimated Passive Earnings (at ~25 downloads):</span>
                       <span className="text-emerald-400 font-black text-base">{formatCurrency(estimatedTotalEarnings)}</span>
                     </div>
                   </div>
@@ -343,7 +343,7 @@ export default function UploadNotesPage() {
                 ) : (
                   <>
                     <UploadCloud className="w-4 h-4" />
-                    Publish & Start Earning Royalties
+                    Publish & Start Earning 90% Royalties
                     <ArrowRight className="w-4 h-4" />
                   </>
                 )}
