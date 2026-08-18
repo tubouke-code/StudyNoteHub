@@ -17,15 +17,21 @@ import {
   User, 
   Calendar,
   Sparkles,
-  BookOpen
+  BookOpen,
+  Bot,
+  Send,
+  HelpCircle,
+  Check
 } from 'lucide-react';
 import { MOCK_DOCUMENTS, MOCK_CURRENT_USER } from '@/lib/mock-data';
 import { formatCurrency, formatFileSize, formatDate } from '@/lib/utils';
 import { PaymentModal } from '@/components/payments/PaymentModal';
+import { useAuth } from '@/context/AuthContext';
 
 export default function NoteDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const { user } = useAuth();
   const noteId = params.id as string;
 
   const note = MOCK_DOCUMENTS.find((d) => d.id === noteId) || MOCK_DOCUMENTS[0];
@@ -33,7 +39,39 @@ export default function NoteDetailPage() {
 
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isUnlocked, setIsUnlocked] = useState(isFree);
-  const [activeTab, setActiveTab] = useState<'PREVIEW' | 'SYLLABUS' | 'REVIEWS'>('PREVIEW');
+  const [activeTab, setActiveTab] = useState<'PREVIEW' | 'AI_CHAT' | 'SYLLABUS' | 'REVIEWS'>('PREVIEW');
+  const [copiedLink, setCopiedLink] = useState(false);
+
+  // AI Study Assistant State
+  const [aiQuery, setAiQuery] = useState('');
+  const [isAiTyping, setIsAiTyping] = useState(false);
+  const [aiChatMessages, setAiChatMessages] = useState([
+    {
+      role: 'assistant',
+      text: `Hello! I am your AI Study Tutor for **"${note.title}"**. Ask me any question, request a summary, or let me generate exam practice questions from this material!`,
+    },
+  ]);
+
+  const handleAskAi = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!aiQuery.trim()) return;
+
+    const userQuestion = aiQuery;
+    setAiQuery('');
+    setAiChatMessages((prev) => [...prev, { role: 'user', text: userQuestion }]);
+    setIsAiTyping(true);
+
+    setTimeout(() => {
+      setIsAiTyping(false);
+      setAiChatMessages((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          text: `Based on **${note.course_code} (${note.title})**:\n\n1. **Core Concept**: The material breaks this topic into foundational principles with step-by-step exam breakdowns.\n2. **Key Insight for Exams**: Pay special attention to the formulas and solved past question frameworks in Section 3.\n3. **Quick Practice Tip**: Memorize the definitions on pages 12–15 for high CBT exam scores!`,
+        },
+      ]);
+    }, 1200);
+  };
 
   const handleDownload = () => {
     if (!isUnlocked) {
@@ -41,6 +79,12 @@ export default function NoteDetailPage() {
       return;
     }
     alert(`Downloading "${note.title}" (${formatFileSize(note.file_size_bytes)})... File delivered!`);
+  };
+
+  const handleShare = () => {
+    navigator.clipboard.writeText(window.location.href);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2000);
   };
 
   return (
@@ -70,215 +114,300 @@ export default function NoteDetailPage() {
                 {note.institution}
               </span>
               {note.level && (
-                <span className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-800">
-                  {note.level} Level
+                <span className="px-3 py-1 rounded-lg text-xs font-bold bg-slate-100 text-slate-700">
+                  {note.level}
+                </span>
+              )}
+              {isFree ? (
+                <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-emerald-100 text-emerald-800 flex items-center gap-1">
+                  <Sparkles className="w-3 h-3 text-emerald-600" /> FREE
+                </span>
+              ) : (
+                <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-indigo-100 text-indigo-900">
+                  {formatCurrency(note.price)}
                 </span>
               )}
             </div>
 
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 leading-snug">
+            <h1 className="text-xl sm:text-3xl font-black text-slate-900 leading-tight">
               {note.title}
             </h1>
 
-            <p className="text-sm text-slate-600 leading-relaxed">
+            <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
               {note.description}
             </p>
 
-            {/* Author bar */}
-            <div className="flex items-center gap-3 pt-4 border-t border-slate-100 text-xs text-slate-500">
-              <img
-                src={note.uploader?.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=100'}
-                alt={note.uploader?.full_name}
-                className="w-8 h-8 rounded-full object-cover ring-2 ring-primary-100"
-              />
-              <div>
-                <p className="font-bold text-slate-900">{note.uploader?.full_name}</p>
-                <p className="text-[11px] text-slate-400">Uploaded {formatDate(note.created_at)}</p>
+            <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500 pt-2 border-t border-slate-100">
+              <div className="flex items-center gap-1.5">
+                <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
+                <span className="font-bold text-slate-900">{note.rating.toFixed(1)}</span>
+                <span>(34 ratings)</span>
+              </div>
+              <span>•</span>
+              <div className="flex items-center gap-1">
+                <Download className="w-4 h-4 text-slate-400" />
+                <span>{note.downloads_count} students unlocked</span>
+              </div>
+              <span>•</span>
+              <div className="flex items-center gap-1">
+                <FileText className="w-4 h-4 text-slate-400" />
+                <span>{note.page_count} Pages ({formatFileSize(note.file_size_bytes)})</span>
               </div>
             </div>
           </div>
 
-          {/* Interactive Document Viewer / Preview Simulator */}
-          <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/70">
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setActiveTab('PREVIEW')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                    activeTab === 'PREVIEW' ? 'bg-white text-primary-700 shadow-xs' : 'text-slate-600'
-                  }`}
-                >
-                  Document Preview ({note.page_count} Pages)
-                </button>
-                <button
-                  onClick={() => setActiveTab('REVIEWS')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                    activeTab === 'REVIEWS' ? 'bg-white text-primary-700 shadow-xs' : 'text-slate-600'
-                  }`}
-                >
-                  Student Reviews (★ {note.rating})
-                </button>
+          {/* Navigation Tabs for Viewer & AI */}
+          <div className="flex border-b border-slate-200 gap-6 text-xs sm:text-sm font-bold">
+            <button
+              onClick={() => setActiveTab('PREVIEW')}
+              className={`pb-3 transition-colors flex items-center gap-1.5 ${
+                activeTab === 'PREVIEW'
+                  ? 'text-primary-700 border-b-2 border-primary-600'
+                  : 'text-slate-500 hover:text-slate-900'
+              }`}
+            >
+              <Eye className="w-4 h-4" /> Document Sample Preview
+            </button>
+
+            <button
+              onClick={() => setActiveTab('AI_CHAT')}
+              className={`pb-3 transition-colors flex items-center gap-1.5 ${
+                activeTab === 'AI_CHAT'
+                  ? 'text-indigo-600 border-b-2 border-indigo-600 font-extrabold'
+                  : 'text-slate-500 hover:text-slate-900'
+              }`}
+            >
+              <Bot className="w-4 h-4 text-indigo-600" /> Ask Note AI Assistant
+              <span className="text-[10px] bg-indigo-100 text-indigo-800 px-1.5 py-0.2 rounded-full">New</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('SYLLABUS')}
+              className={`pb-3 transition-colors ${
+                activeTab === 'SYLLABUS'
+                  ? 'text-primary-700 border-b-2 border-primary-600'
+                  : 'text-slate-500 hover:text-slate-900'
+              }`}
+            >
+              Syllabus Outline
+            </button>
+          </div>
+
+          {/* TAB 1: DOCUMENT PREVIEWER WITH WATERMARK */}
+          {activeTab === 'PREVIEW' && (
+            <div className="relative bg-white rounded-3xl border border-slate-200/80 shadow-md p-6 sm:p-8 space-y-6 overflow-hidden">
+              
+              {/* Dynamic Anti-Piracy Watermark Overlay */}
+              <div className="absolute inset-0 pointer-events-none z-10 flex items-center justify-center rotate-[-25deg] opacity-[0.07] select-none text-slate-900 font-black text-2xl sm:text-4xl text-center leading-loose">
+                STUDYNOTEHUB PREVIEW • LICENSED TO {user?.email || 'STUDENT'} • DO NOT REDISTRIBUTE
               </div>
 
-              <span className="text-xs text-slate-400 font-mono hidden sm:inline-block">
-                PDF • {formatFileSize(note.file_size_bytes)}
-              </span>
-            </div>
-
-            {/* Reader Container */}
-            <div className="p-6 sm:p-8 min-h-[420px] bg-slate-100/60 flex flex-col items-center justify-center relative">
-              
-              {/* Document Pages Container */}
-              <div className="w-full max-w-xl bg-white rounded-2xl shadow-xl border border-slate-200 p-8 space-y-6 text-slate-800 text-sm relative">
-                
-                {/* Page Header */}
-                <div className="border-b border-slate-200 pb-4 flex justify-between items-center text-xs text-slate-400">
-                  <span className="font-bold text-slate-700">{note.course_code}: {note.course_title || 'Lecture Summary'}</span>
+              {/* Sample Document Page 1 */}
+              <div className="space-y-4 border-b border-slate-100 pb-6">
+                <div className="flex items-center justify-between text-xs text-slate-400">
                   <span>Page 1 of {note.page_count}</span>
+                  <span className="text-emerald-600 font-bold">✓ Verified Author Notes</span>
                 </div>
-
-                {/* Sample Lecture Text Content */}
-                <div className="space-y-4 font-serif leading-relaxed text-slate-700">
-                  <h3 className="font-bold text-base text-slate-900 font-sans">
-                    Module 1: Foundational Frameworks & Definitions
-                  </h3>
-                  <p>
-                    In this lecture module, we review the fundamental equilibrium conditions that govern macro-systems and empirical modeling methodologies.
-                  </p>
-                  <p className="text-xs text-slate-500 bg-slate-50 p-3 rounded-lg border border-slate-100 font-mono">
-                    Key Equation: Y = C(Y - T) + I(r) + G + NX
-                  </p>
-                  <p>
-                    When evaluating comparative static changes in exogenous variables, it is crucial to account for transmission mechanisms and inflation elasticity coefficients.
-                  </p>
+                <div className="space-y-2 text-xs sm:text-sm text-slate-800 leading-relaxed font-serif">
+                  <h3 className="text-base font-bold font-sans text-slate-900">{note.course_code}: {note.course_title}</h3>
+                  <p><strong>Chapter 1: Theoretical Foundations and Overview</strong></p>
+                  <p>This master summary covers core semester objectives required by {note.institution} for academic excellence.</p>
+                  <ul className="list-disc pl-5 space-y-1 text-slate-700">
+                    <li>Core definitions, key principles, and conceptual models.</li>
+                    <li>Mathematical proofs, derivations, and step-by-step problem sets.</li>
+                    <li>Past examination analysis with standard marking guides.</li>
+                  </ul>
                 </div>
+              </div>
 
-                {/* Watermark / Blur overlay for locked documents */}
-                {!isUnlocked && (
-                  <div className="absolute inset-0 bg-gradient-to-b from-transparent via-white/80 to-white rounded-2xl flex flex-col items-center justify-end p-8 text-center backdrop-blur-[2px]">
-                    <div className="p-3 bg-indigo-100 text-indigo-700 rounded-full mb-3">
+              {/* Paywall Blur Guard for remaining pages */}
+              {!isUnlocked ? (
+                <div className="relative pt-4">
+                  <div className="space-y-3 blur-xs select-none opacity-40 text-xs sm:text-sm font-serif">
+                    <p>Chapter 2: Advanced Empirical Modeling and Regression Analysis...</p>
+                    <p>In accordance with Keynesian and Classical macroeconomic paradigms, equilibrium is derived by equating aggregate demand with aggregate supply...</p>
+                    <p>Formula (1.4): Y = C(Y - T) + I(r) + G + NX</p>
+                  </div>
+
+                  <div className="absolute inset-0 flex flex-col items-center justify-center p-6 bg-gradient-to-t from-white via-white/90 to-transparent text-center space-y-3">
+                    <div className="w-12 h-12 rounded-2xl bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold">
                       <Lock className="w-6 h-6" />
                     </div>
-                    <h4 className="font-extrabold text-slate-900 text-base">
-                      Preview Restricted to First Pages
-                    </h4>
-                    <p className="text-xs text-slate-500 max-w-xs mt-1 mb-4">
-                      Unlock the complete {note.page_count}-page verified study document and solutions manual.
-                    </p>
+                    <div>
+                      <h4 className="text-base font-bold text-slate-900">Unlock the Full {note.page_count}-Page Document</h4>
+                      <p className="text-xs text-slate-500 max-w-sm">
+                        Get instant lifetime access to all solved past questions, diagrams, and formulas.
+                      </p>
+                    </div>
                     <button
                       onClick={() => setIsPaymentModalOpen(true)}
-                      className="px-6 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs shadow-md"
+                      className="px-6 py-3 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs shadow-md shadow-primary-600/30 transition-all flex items-center gap-2"
                     >
-                      Unlock Full Document ({formatCurrency(note.price)})
+                      <Lock className="w-4 h-4" />
+                      Unlock for {formatCurrency(note.price)}
                     </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-4 rounded-2xl bg-emerald-50 text-emerald-900 text-xs font-semibold flex items-center justify-between">
+                  <span>✓ You own this material. You can download and read anytime.</span>
+                  <button
+                    onClick={handleDownload}
+                    className="px-3.5 py-1.5 rounded-lg bg-emerald-600 text-white font-bold text-xs flex items-center gap-1"
+                  >
+                    <Download className="w-3.5 h-3.5" /> Download PDF
+                  </button>
+                </div>
+              )}
+
+            </div>
+          )}
+
+          {/* TAB 2: AI STUDY ASSISTANT */}
+          {activeTab === 'AI_CHAT' && (
+            <div className="bg-white rounded-3xl border border-slate-200/80 shadow-md p-6 space-y-4 h-[480px] flex flex-col justify-between">
+              <div className="overflow-y-auto space-y-3 flex-1 pr-1">
+                {aiChatMessages.map((msg, i) => (
+                  <div
+                    key={i}
+                    className={`flex gap-3 text-xs sm:text-sm leading-relaxed ${
+                      msg.role === 'user' ? 'justify-end' : 'justify-start'
+                    }`}
+                  >
+                    {msg.role === 'assistant' && (
+                      <div className="w-7 h-7 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0 mt-0.5">
+                        <Bot className="w-4 h-4" />
+                      </div>
+                    )}
+                    <div
+                      className={`p-3.5 rounded-2xl max-w-lg ${
+                        msg.role === 'user'
+                          ? 'bg-primary-600 text-white rounded-tr-none'
+                          : 'bg-slate-100 text-slate-800 rounded-tl-none'
+                      }`}
+                    >
+                      {msg.text}
+                    </div>
+                  </div>
+                ))}
+                {isAiTyping && (
+                  <div className="flex items-center gap-2 text-xs text-slate-400">
+                    <Bot className="w-4 h-4 animate-spin" /> AI Tutor is reading note & typing...
                   </div>
                 )}
               </div>
 
+              <form onSubmit={handleAskAi} className="pt-2 border-t border-slate-100 flex items-center gap-2">
+                <input
+                  type="text"
+                  value={aiQuery}
+                  onChange={(e) => setAiQuery(e.target.value)}
+                  placeholder="Ask a question, request a summary, or ask for practice questions..."
+                  className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm outline-none focus:border-indigo-500"
+                />
+                <button
+                  type="submit"
+                  className="p-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs"
+                >
+                  <Send className="w-4 h-4" />
+                </button>
+              </form>
             </div>
-          </div>
+          )}
+
+          {/* TAB 3: SYLLABUS OUTLINE */}
+          {activeTab === 'SYLLABUS' && (
+            <div className="bg-white rounded-3xl border border-slate-200/80 shadow-md p-6 sm:p-8 space-y-4 text-xs sm:text-sm text-slate-700">
+              <h3 className="font-bold text-slate-900">Covered Modules:</h3>
+              <ul className="list-decimal pl-5 space-y-2">
+                <li>Module 1: Introduction, Definitions & Terminology</li>
+                <li>Module 2: Historical Context, Key Theorists & Comparative Case Studies</li>
+                <li>Module 3: Quantitative Formulations & Analytical Graphs</li>
+                <li>Module 4: 5 Years Solved Semester Past Questions with Model Solutions</li>
+              </ul>
+            </div>
+          )}
 
         </div>
 
-        {/* Right Col: Purchase / Download Action Card */}
+        {/* Right Col: Pricing & Author Bio */}
         <div className="space-y-6">
           
-          <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-md space-y-6 sticky top-24">
+          <div className="p-6 bg-white rounded-3xl border border-slate-200/80 shadow-md space-y-6">
             <div>
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                Access Tier
+              <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400">
+                Purchase Access
               </span>
-              <div className="mt-1 flex items-baseline gap-2">
-                <span className="text-3xl sm:text-4xl font-black text-slate-900">
-                  {isFree ? 'FREE' : formatCurrency(note.price)}
-                </span>
-                {!isFree && (
-                  <span className="text-xs text-slate-400">One-time payment</span>
+              <p className="text-3xl font-black text-slate-900 mt-1">
+                {isFree ? 'FREE' : formatCurrency(note.price)}
+              </p>
+              <span className="text-xs text-slate-500">Lifetime access • Instant PDF download</span>
+            </div>
+
+            <div className="space-y-2">
+              <button
+                onClick={handleDownload}
+                className={`w-full py-3.5 rounded-xl font-bold text-xs shadow-md transition-all flex items-center justify-center gap-2 ${
+                  isUnlocked
+                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                    : 'bg-primary-600 hover:bg-primary-700 text-white shadow-primary-600/30'
+                }`}
+              >
+                {isUnlocked ? (
+                  <>
+                    <Download className="w-4 h-4" />
+                    Download Complete File
+                  </>
+                ) : (
+                  <>
+                    <Lock className="w-4 h-4" />
+                    Unlock Note for {formatCurrency(note.price)}
+                  </>
                 )}
+              </button>
+
+              <button
+                onClick={handleShare}
+                className="w-full py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors flex items-center justify-center gap-1.5"
+              >
+                {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Share2 className="w-3.5 h-3.5 text-slate-400" />}
+                {copiedLink ? 'Link Copied!' : 'Share Material with Friends'}
+              </button>
+            </div>
+
+            {/* Author Profile */}
+            <div className="pt-4 border-t border-slate-100 flex items-center gap-3">
+              <img
+                src={note.uploader?.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=150'}
+                alt={note.uploader?.full_name}
+                className="w-10 h-10 rounded-full object-cover ring-2 ring-primary-100"
+              />
+              <div>
+                <p className="text-xs font-bold text-slate-900">{note.uploader?.full_name}</p>
+                <p className="text-[11px] text-slate-500">{note.uploader?.institution || note.institution}</p>
+                <span className="text-[10px] text-emerald-700 font-bold">✓ 90% Creator Royalties Earner</span>
               </div>
             </div>
-
-            {/* Feature checklist */}
-            <ul className="space-y-3 text-xs text-slate-600">
-              <li className="flex items-center gap-2.5">
-                <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0" />
-                <span>Full {note.page_count}-page high-resolution PDF file</span>
-              </li>
-              <li className="flex items-center gap-2.5">
-                <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0" />
-                <span>Verified by departmental peer reviewers</span>
-              </li>
-              <li className="flex items-center gap-2.5">
-                <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0" />
-                <span>Lifetime download & offline access</span>
-              </li>
-              <li className="flex items-center gap-2.5">
-                <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0" />
-                <span>Printable with clean margins & solved past exams</span>
-              </li>
-            </ul>
-
-            {/* Action Button */}
-            <button
-              onClick={handleDownload}
-              className={`w-full py-4 rounded-2xl font-extrabold text-sm shadow-lg transition-all flex items-center justify-center gap-2 ${
-                isUnlocked
-                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/30'
-                  : 'bg-primary-600 hover:bg-primary-700 text-white shadow-primary-600/30'
-              }`}
-            >
-              {isUnlocked ? (
-                <>
-                  <Download className="w-4 h-4" />
-                  Download Complete PDF ({formatFileSize(note.file_size_bytes)})
-                </>
-              ) : (
-                <>
-                  <Lock className="w-4 h-4" />
-                  Pay & Download ({formatCurrency(note.price)})
-                </>
-              )}
-            </button>
-
-            {/* Guarantee */}
-            <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 text-center text-[11px] text-slate-500 flex items-center justify-center gap-1.5">
-              <ShieldCheck className="w-4 h-4 text-emerald-600" />
-              Secure Checkout with Paystack, Flutterwave & Wallet
-            </div>
-
-            {/* Need Project / Assignment Assistance CTA */}
-            <div className="pt-4 border-t border-slate-100">
-              <p className="text-xs font-bold text-slate-800 mb-1">Need a custom paper or project?</p>
-              <p className="text-[11px] text-slate-500 mb-3">Hire a verified academic writer to handle this topic with 100% Escrow safety.</p>
-              <Link
-                href={`/hire-writer/new?topic=${encodeURIComponent(note.title)}`}
-                className="w-full block text-center py-2.5 rounded-xl bg-primary-50 hover:bg-primary-100 text-primary-700 font-bold text-xs border border-primary-200 transition-colors"
-              >
-                Hire Writer for this Course
-              </Link>
-            </div>
-
           </div>
 
         </div>
 
       </div>
 
-      {/* Payment Modal */}
+      {/* Checkout Modal */}
       <PaymentModal
         isOpen={isPaymentModalOpen}
         onClose={() => setIsPaymentModalOpen(false)}
-        title={`Purchase "${note.title}"`}
+        title={`Unlock "${note.title}"`}
         amount={note.price}
         itemType="NOTE_PURCHASE"
         itemId={note.id}
         onSuccess={() => {
           setIsPaymentModalOpen(false);
           setIsUnlocked(true);
-          alert('Payment confirmed! Your full document is now unlocked for download.');
+          alert('Note successfully unlocked! Download available.');
         }}
       />
-
     </div>
   );
 }

@@ -15,7 +15,12 @@ import {
   LayoutDashboard,
   Shield,
   LogIn,
-  UserPlus
+  UserPlus,
+  Gift,
+  Bell,
+  CheckCircle2,
+  DollarSign,
+  FileText
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { formatCurrency } from '@/lib/utils';
@@ -27,6 +32,34 @@ export function Navbar() {
   const [mounted, setMounted] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+
+  const [notifications] = useState([
+    {
+      id: 'notif_1',
+      title: 'Royalty Credited! ₦1,350',
+      desc: 'Someone unlocked your ECO 201 Macroeconomics note.',
+      time: '10m ago',
+      icon: '💰',
+      unread: true,
+    },
+    {
+      id: 'notif_2',
+      title: 'Draft & Turnitin Delivered',
+      desc: 'Dr. Emeka submitted Chapter 4 & 5 with 2.4% originality.',
+      time: '1h ago',
+      icon: '📄',
+      unread: true,
+    },
+    {
+      id: 'notif_3',
+      title: 'Referral Bonus ₦750',
+      desc: 'Your course mate registered and purchased their first note.',
+      time: '3h ago',
+      icon: '🎁',
+      unread: false,
+    },
+  ]);
 
   useEffect(() => {
     setMounted(true);
@@ -38,10 +71,8 @@ export function Navbar() {
     router.push('/');
   };
 
-  // Safe authenticated state
   const isAuthReady = mounted && isLoggedIn && !!user;
 
-  // Determine user dashboard link based on role
   const getDashboardHref = () => {
     if (!user) return '/login';
     if (user.role === 'ADMIN') return '/admin';
@@ -105,7 +136,18 @@ export function Navbar() {
               </span>
             </Link>
 
-            {/* If Logged In: Show designated Role Dashboard Link */}
+            <Link
+              href="/referrals"
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-semibold transition-all ${
+                pathname === '/referrals'
+                  ? 'bg-primary-50 text-primary-700 font-bold'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
+              }`}
+            >
+              <Gift className="w-4 h-4 text-amber-500" />
+              Earn 5% Referrals
+            </Link>
+
             {isAuthReady && (
               <Link
                 href={getDashboardHref()}
@@ -140,6 +182,42 @@ export function Navbar() {
                   Upload & Earn
                 </Link>
 
+                {/* Notifications Bell */}
+                <div className="relative">
+                  <button
+                    onClick={() => {
+                      setNotificationsOpen(!notificationsOpen);
+                      setUserDropdownOpen(false);
+                    }}
+                    className="p-2 rounded-xl text-slate-600 hover:bg-slate-100 relative"
+                  >
+                    <Bell className="w-4 h-4" />
+                    <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500 animate-ping" />
+                    <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500" />
+                  </button>
+
+                  {notificationsOpen && (
+                    <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-2xl border border-slate-100 py-3 z-50">
+                      <div className="px-4 pb-2 border-b border-slate-100 flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-900">Notifications</span>
+                        <span className="text-[10px] text-primary-600 font-semibold cursor-pointer">Mark all as read</span>
+                      </div>
+                      <div className="divide-y divide-slate-100 max-h-64 overflow-y-auto">
+                        {notifications.map((n) => (
+                          <div key={n.id} className="p-3 hover:bg-slate-50 transition-colors flex items-start gap-3 cursor-pointer">
+                            <span className="text-lg">{n.icon}</span>
+                            <div className="space-y-0.5">
+                              <p className="text-xs font-bold text-slate-900">{n.title}</p>
+                              <p className="text-[11px] text-slate-500 leading-tight">{n.desc}</p>
+                              <span className="text-[10px] text-slate-400 block pt-0.5">{n.time}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 {/* Wallet Balance Pill */}
                 <Link
                   href="/wallet"
@@ -152,7 +230,10 @@ export function Navbar() {
                 {/* User Dropdown */}
                 <div className="relative">
                   <button
-                    onClick={() => setUserDropdownOpen(!userDropdownOpen)}
+                    onClick={() => {
+                      setUserDropdownOpen(!userDropdownOpen);
+                      setNotificationsOpen(false);
+                    }}
                     className="flex items-center gap-2 pl-1 border-l border-slate-200"
                   >
                     <img
@@ -187,6 +268,13 @@ export function Navbar() {
                           className="flex items-center gap-2 px-3 py-2 rounded-lg text-slate-700 hover:bg-slate-50 font-medium"
                         >
                           <Wallet className="w-4 h-4 text-slate-400" /> Wallet Balance
+                        </Link>
+                        <Link
+                          href="/referrals"
+                          onClick={() => setUserDropdownOpen(false)}
+                          className="flex items-center gap-2 px-3 py-2 rounded-lg text-slate-700 hover:bg-slate-50 font-medium"
+                        >
+                          <Gift className="w-4 h-4 text-amber-500" /> Refer & Earn 5%
                         </Link>
                         <Link
                           href="/notes/upload"
@@ -297,6 +385,13 @@ export function Navbar() {
             className="flex items-center gap-2.5 p-2.5 rounded-lg text-slate-700 hover:bg-slate-50 text-sm font-semibold"
           >
             <PenTool className="w-4 h-4 text-emerald-600" /> Hire a Writer
+          </Link>
+          <Link
+            href="/referrals"
+            onClick={() => setMobileMenuOpen(false)}
+            className="flex items-center gap-2.5 p-2.5 rounded-lg text-slate-700 hover:bg-slate-50 text-sm font-semibold"
+          >
+            <Gift className="w-4 h-4 text-amber-500" /> Earn 5% Referrals
           </Link>
           
           {isAuthReady ? (

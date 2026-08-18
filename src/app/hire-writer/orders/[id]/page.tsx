@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { 
   ShieldCheck, 
@@ -16,12 +16,14 @@ import {
   Lock,
   Sparkles,
   RefreshCw,
-  Award
+  Award,
+  AlertCircle
 } from 'lucide-react';
 import { MOCK_ORDERS } from '@/lib/mock-data';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { TurnitinReportCard } from '@/components/turnitin/TurnitinReportCard';
+import { sanitizeChatMessage } from '@/lib/chat-sanitizer';
 
 export default function OrderWorkspacePage({ params }: { params: { id: string } }) {
   const { user } = useAuth();
@@ -53,20 +55,32 @@ export default function OrderWorkspacePage({ params }: { params: { id: string } 
   ]);
 
   const [inputMessage, setInputMessage] = useState('');
+  const [warningNotice, setWarningNotice] = useState<string | null>(null);
   const [isReleasing, setIsReleasing] = useState(false);
   const [escrowReleased, setEscrowReleased] = useState(false);
+
+  // 48-Hour Inactivity Countdown Timer for Escrow Auto-Resolution
+  const [timeLeftHours, setTimeLeftHours] = useState(48);
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputMessage.trim()) return;
 
-    setMessages([
-      ...messages,
+    // Run Security & Anti-Disintermediation Sanitizer
+    const sanitized = sanitizeChatMessage(inputMessage);
+
+    if (sanitized.isBlocked) {
+      setWarningNotice(sanitized.warningMessage || 'Off-platform contact details are blocked for your safety.');
+      setTimeout(() => setWarningNotice(null), 5000);
+    }
+
+    setMessages((prev) => [
+      ...prev,
       {
         id: `msg_${Date.now()}`,
-        sender: user?.full_name || 'Student',
+        sender: user?.full_name || (user?.role === 'WRITER' ? 'Writer' : 'Student'),
         isWriter: user?.role === 'WRITER',
-        text: inputMessage,
+        text: sanitized.cleanText,
         timestamp: 'Just now',
       },
     ]);
@@ -79,7 +93,7 @@ export default function OrderWorkspacePage({ params }: { params: { id: string } 
       setTimeout(() => {
         setIsReleasing(false);
         setEscrowReleased(true);
-        alert('Escrow released successfully! Writer wallet credited.');
+        alert('Escrow released successfully! Writer wallet credited with 85% payout.');
       }, 1500);
     }
   };
@@ -132,6 +146,24 @@ export default function OrderWorkspacePage({ params }: { params: { id: string } 
           </div>
         </div>
 
+        {/* Security & Escrow Protection Alert Banner */}
+        <div className="p-4 rounded-2xl bg-emerald-950 text-white flex flex-col sm:flex-row items-center justify-between gap-3 shadow-lg">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+              <ShieldCheck className="w-5 h-5" />
+            </div>
+            <div className="text-xs">
+              <p className="font-bold text-white">Escrow Protection & 48hr Auto-Resolution Clock</p>
+              <p className="text-emerald-300 text-[11px]">
+                Deliverable draft submitted. You have <strong>48 hours</strong> to review the Turnitin report and approve or request free revisions.
+              </p>
+            </div>
+          </div>
+          <div className="px-3 py-1.5 rounded-xl bg-white/10 text-emerald-300 font-mono text-xs font-black shrink-0">
+            ⏳ {timeLeftHours}h 00m Left
+          </div>
+        </div>
+
         {/* Milestone Tracker */}
         <div className="p-6 bg-white rounded-3xl border border-slate-200/80 shadow-xs">
           <div className="grid grid-cols-4 gap-2 text-center">
@@ -170,7 +202,7 @@ export default function OrderWorkspacePage({ params }: { params: { id: string } 
         {/* Main Grid: Chat & Deliverables */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           
-          {/* Left Column: Realtime Chat Workspace */}
+          {/* Left Column: Realtime Chat Workspace with Sanitizer */}
           <div className="lg:col-span-2 bg-white rounded-3xl border border-slate-200/80 shadow-xs flex flex-col h-[600px] overflow-hidden">
             <div className="p-4 border-b border-slate-100 flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -220,6 +252,14 @@ export default function OrderWorkspacePage({ params }: { params: { id: string } 
                 </div>
               ))}
             </div>
+
+            {/* Anti-Disintermediation Alert if triggered */}
+            {warningNotice && (
+              <div className="p-3 mx-4 mb-2 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700 flex items-center gap-2 animate-in fade-in">
+                <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+                <span>{warningNotice}</span>
+              </div>
+            )}
 
             {/* Message Input Form */}
             <form onSubmit={handleSendMessage} className="p-4 border-t border-slate-100 flex items-center gap-2">
