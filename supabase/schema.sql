@@ -1,6 +1,6 @@
 -- =========================================================
--- StudyNoteHub Supabase Database Schema
--- Supports Study Materials, Assignment Marketplace, Escrow & Payments
+-- StudyNoteHub Supabase Database Schema (Updated)
+-- Supports Multi-Admin, Study Materials, Assignment Marketplace, Escrow & Payments
 -- =========================================================
 
 -- Enable UUID extension
@@ -14,19 +14,25 @@ EXCEPTION
 END $$;
 
 DO $$ BEGIN
+    CREATE TYPE admin_permission AS ENUM ('SUPER_ADMIN', 'DISPUTE_MANAGER', 'CONTENT_MODERATOR', 'FINANCE_AUDITOR');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
     CREATE TYPE doc_status AS ENUM ('PENDING', 'APPROVED', 'REJECTED');
 EXCEPTION
     WHEN duplicate_object THEN null;
 END $$;
 
 DO $$ BEGIN
-    CREATE TYPE order_status AS ENUM ('OPEN', 'ASSIGNED', 'IN_PROGRESS', 'IN_REVIEW', 'COMPLETED', 'DISPUTED', 'CANCELLED');
+    CREATE TYPE order_status AS ENUM ('OPEN', 'ASSIGNED', 'IN_PROGRESS', 'IN_REVIEW', 'DISPUTED', 'COMPLETED', 'CANCELLED');
 EXCEPTION
     WHEN duplicate_object THEN null;
 END $$;
 
 DO $$ BEGIN
-    CREATE TYPE escrow_status AS ENUM ('UNPAID', 'HELD_IN_ESCROW', 'RELEASED_TO_WRITER', 'REFUNDED_TO_STUDENT');
+    CREATE TYPE escrow_status AS ENUM ('UNPAID', 'HELD_IN_ESCROW', 'RELEASED_TO_WRITER', 'REFUNDED_TO_STUDENT', 'DISPUTE_HOLD');
 EXCEPTION
     WHEN duplicate_object THEN null;
 END $$;
@@ -38,7 +44,7 @@ EXCEPTION
 END $$;
 
 DO $$ BEGIN
-    CREATE TYPE txn_type AS ENUM ('WALLET_DEPOSIT', 'NOTE_PURCHASE', 'NOTE_SALE_ROYALTY', 'ESCROW_LOCK', 'ESCROW_PAYOUT', 'WITHDRAWAL');
+    CREATE TYPE txn_type AS ENUM ('WALLET_DEPOSIT', 'NOTE_PURCHASE', 'NOTE_SALE_ROYALTY', 'ESCROW_LOCK', 'ESCROW_PAYOUT', 'PLATFORM_FEE', 'WITHDRAWAL', 'REFUND');
 EXCEPTION
     WHEN duplicate_object THEN null;
 END $$;
@@ -55,6 +61,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     email TEXT NOT NULL UNIQUE,
     full_name TEXT NOT NULL,
     role user_role DEFAULT 'STUDENT',
+    admin_permission admin_permission DEFAULT NULL,
     avatar_url TEXT,
     institution TEXT,
     department TEXT,
@@ -69,6 +76,9 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Ensure column exists if table was created previously
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS admin_permission admin_permission DEFAULT NULL;
+
 -- 3. Study Materials & Lesson Notes
 CREATE TABLE IF NOT EXISTS public.documents (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -80,13 +90,13 @@ CREATE TABLE IF NOT EXISTS public.documents (
     institution TEXT NOT NULL,
     faculty TEXT,
     department TEXT,
-    level TEXT, -- e.g. 100L, 200L, 300L, 400L, 500L, Masters, ND, HND
-    file_path TEXT NOT NULL, -- Supabase Storage file key
+    level TEXT,
+    file_path TEXT NOT NULL,
     preview_file_path TEXT,
-    file_type TEXT NOT NULL DEFAULT 'pdf', -- pdf, docx, pptx
+    file_type TEXT NOT NULL DEFAULT 'pdf',
     file_size_bytes BIGINT,
     page_count INT DEFAULT 1,
-    price NUMERIC(10, 2) DEFAULT 0.00, -- 0.00 = Free
+    price NUMERIC(10, 2) DEFAULT 0.00,
     downloads_count INT DEFAULT 0,
     status doc_status DEFAULT 'APPROVED',
     rating NUMERIC(3, 2) DEFAULT 5.00,
@@ -111,19 +121,20 @@ CREATE TABLE IF NOT EXISTS public.orders (
     student_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
     writer_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
     title TEXT NOT NULL,
-    service_type TEXT NOT NULL, -- Assignment, Final Year Project, Essay, Thesis, Data Analysis, Coursework
+    service_type TEXT NOT NULL,
     subject_area TEXT NOT NULL,
-    academic_level TEXT NOT NULL, -- High School, Undergraduate, Post-Graduate, PhD
+    academic_level TEXT NOT NULL,
     pages_count INT DEFAULT 1,
     word_count INT,
-    citation_style TEXT DEFAULT 'APA 7th', -- APA, MLA, Harvard, IEEE, Chicago, Vancouver
+    citation_style TEXT DEFAULT 'APA 7th',
     deadline TIMESTAMPTZ NOT NULL,
     instructions TEXT NOT NULL,
-    attachment_paths TEXT[], -- Attached guideline/rubric files
+    attachment_paths TEXT[],
     budget NUMERIC(10, 2) NOT NULL,
     platform_fee NUMERIC(10, 2) DEFAULT 0.00,
     status order_status DEFAULT 'OPEN',
     escrow_status escrow_status DEFAULT 'UNPAID',
+    dispute_reason TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -134,7 +145,7 @@ CREATE TABLE IF NOT EXISTS public.order_submissions (
     order_id UUID NOT NULL REFERENCES public.orders(id) ON DELETE CASCADE,
     writer_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
     file_paths TEXT[] NOT NULL,
-    plagiarism_score NUMERIC(4, 2), -- e.g. 2.5%
+    plagiarism_score NUMERIC(4, 2),
     ai_score NUMERIC(4, 2),
     notes TEXT,
     version INT DEFAULT 1,
@@ -191,7 +202,7 @@ CREATE TABLE IF NOT EXISTS public.reviews (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Auto Create Profile on Supabase Auth Sign Up
+-- Auto Create Profile Trigger
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -202,7 +213,8 @@ BEGIN
         COALESCE(NEW.raw_user_meta_data->>'full_name', 'Student User'),
         COALESCE((NEW.raw_user_meta_data->>'role')::user_role, 'STUDENT'),
         NEW.raw_user_meta_data->>'avatar_url'
-    );
+    )
+    ON CONFLICT (id) DO NOTHING;
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -212,7 +224,7 @@ CREATE TRIGGER on_auth_user_created
     AFTER INSERT ON auth.users
     FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
--- Row Level Security (RLS) Policies
+-- Row Level Security (RLS)
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.documents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.document_purchases ENABLE ROW LEVEL SECURITY;
@@ -223,33 +235,8 @@ ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.payout_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.reviews ENABLE ROW LEVEL SECURITY;
 
--- Profiles: Public read, self update
-CREATE POLICY "Public profiles are viewable by everyone" ON public.profiles FOR SELECT USING (true);
+CREATE POLICY "Public profiles viewable by all" ON public.profiles FOR SELECT USING (true);
 CREATE POLICY "Users can update own profile" ON public.profiles FOR UPDATE USING (auth.uid() = id);
-
--- Documents: Approved docs are viewable by everyone, uploaders can manage their docs
 CREATE POLICY "Approved documents viewable by all" ON public.documents FOR SELECT USING (status = 'APPROVED' OR auth.uid() = uploader_id);
 CREATE POLICY "Authenticated users can upload documents" ON public.documents FOR INSERT WITH CHECK (auth.uid() = uploader_id);
 CREATE POLICY "Uploaders can update own documents" ON public.documents FOR UPDATE USING (auth.uid() = uploader_id);
-
--- Orders: Viewable by student creator, assigned writer, or open to verified writers
-CREATE POLICY "Users can view their own orders or open orders" ON public.orders FOR SELECT USING (
-    auth.uid() = student_id OR
-    auth.uid() = writer_id OR
-    (status = 'OPEN' AND EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND (role = 'WRITER' OR is_verified_writer = true)))
-);
-CREATE POLICY "Students can create orders" ON public.orders FOR INSERT WITH CHECK (auth.uid() = student_id);
-CREATE POLICY "Order participants can update order" ON public.orders FOR UPDATE USING (auth.uid() = student_id OR auth.uid() = writer_id);
-
--- Messages: Order participants can view and send messages
-CREATE POLICY "Order participants can read messages" ON public.order_messages FOR SELECT USING (
-    EXISTS (SELECT 1 FROM public.orders WHERE id = order_id AND (student_id = auth.uid() OR writer_id = auth.uid()))
-);
-CREATE POLICY "Order participants can insert messages" ON public.order_messages FOR INSERT WITH CHECK (
-    auth.uid() = sender_id AND
-    EXISTS (SELECT 1 FROM public.orders WHERE id = order_id AND (student_id = auth.uid() OR writer_id = auth.uid()))
-);
-
--- Enable Realtime for Chat Messages and Orders
-ALTER PUBLICATION supabase_realtime ADD TABLE public.order_messages;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.orders;
