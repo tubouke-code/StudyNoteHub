@@ -17,7 +17,8 @@ import {
   Sparkles,
   RefreshCw,
   Award,
-  AlertCircle
+  AlertCircle,
+  ShieldAlert
 } from 'lucide-react';
 import { MOCK_ORDERS } from '@/lib/mock-data';
 import { formatCurrency, formatDate } from '@/lib/utils';
@@ -25,11 +26,22 @@ import { useAuth } from '@/context/AuthContext';
 import { TurnitinReportCard } from '@/components/turnitin/TurnitinReportCard';
 import { sanitizeChatMessage } from '@/lib/chat-sanitizer';
 
+interface ChatMessage {
+  id: string;
+  sender: string;
+  isWriter: boolean;
+  text: string;
+  timestamp: string;
+  attachment?: string;
+  isCensored?: boolean;
+  censorReason?: string;
+}
+
 export default function OrderWorkspacePage({ params }: { params: { id: string } }) {
   const { user } = useAuth();
   const order = MOCK_ORDERS.find((o) => o.id === params.id) || MOCK_ORDERS[0];
 
-  const [messages, setMessages] = useState([
+  const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: 'msg_1',
       sender: 'Dr. Emeka Okafor',
@@ -70,8 +82,8 @@ export default function OrderWorkspacePage({ params }: { params: { id: string } 
     const sanitized = sanitizeChatMessage(inputMessage);
 
     if (sanitized.isBlocked) {
-      setWarningNotice(sanitized.warningMessage || 'Off-platform contact details are blocked for your safety.');
-      setTimeout(() => setWarningNotice(null), 5000);
+      setWarningNotice(sanitized.warningMessage || 'Bank accounts or contact details are blocked to protect your Escrow.');
+      setTimeout(() => setWarningNotice(null), 8000);
     }
 
     setMessages((prev) => [
@@ -82,6 +94,8 @@ export default function OrderWorkspacePage({ params }: { params: { id: string } 
         isWriter: user?.role === 'WRITER',
         text: sanitized.cleanText,
         timestamp: 'Just now',
+        isCensored: sanitized.isBlocked,
+        censorReason: sanitized.blockedReasons[0],
       },
     ]);
     setInputMessage('');
@@ -237,6 +251,14 @@ export default function OrderWorkspacePage({ params }: { params: { id: string } 
                     }`}
                   >
                     {msg.text}
+                    
+                    {msg.isCensored && (
+                      <div className="mt-2 pt-2 border-t border-white/20 flex items-center gap-1.5 text-[10px] text-amber-200 font-bold">
+                        <ShieldAlert className="w-3.5 h-3.5" />
+                        <span>Protected: Bank/Contact details masked by Escrow Firewall</span>
+                      </div>
+                    )}
+
                     {msg.attachment && (
                       <div className="mt-3 p-2.5 rounded-xl bg-white text-slate-900 flex items-center justify-between border border-slate-200 shadow-xs">
                         <div className="flex items-center gap-2">
@@ -255,9 +277,9 @@ export default function OrderWorkspacePage({ params }: { params: { id: string } 
 
             {/* Anti-Disintermediation Alert if triggered */}
             {warningNotice && (
-              <div className="p-3 mx-4 mb-2 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700 flex items-center gap-2 animate-in fade-in">
-                <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
-                <span>{warningNotice}</span>
+              <div className="p-3 mx-4 mb-2 rounded-xl bg-red-50 border border-red-300 text-xs text-red-800 flex items-center gap-2 shadow-sm animate-in fade-in">
+                <ShieldAlert className="w-4 h-4 text-red-600 shrink-0" />
+                <span className="font-semibold">{warningNotice}</span>
               </div>
             )}
 
