@@ -6,256 +6,266 @@ import {
   BookOpen, 
   PenTool, 
   Wallet, 
-  UploadCloud, 
-  Download, 
   Clock, 
   CheckCircle2, 
-  TrendingUp, 
-  Star, 
-  ArrowRight,
+  AlertCircle, 
+  Download, 
+  ChevronRight, 
+  UploadCloud,
+  FileText,
+  DollarSign,
+  GraduationCap,
+  Sparkles,
   ShieldCheck,
-  FileText
+  ArrowRight
 } from 'lucide-react';
-import { MOCK_CURRENT_USER, MOCK_ORDERS, MOCK_DOCUMENTS } from '@/lib/mock-data';
+import { useAuth } from '@/context/AuthContext';
+import { MOCK_ORDERS, MOCK_DOCUMENTS } from '@/lib/mock-data';
 import { formatCurrency, formatDate } from '@/lib/utils';
+import { WriterVerificationModal } from '@/components/writer/WriterVerificationModal';
 
-export default function DashboardPage() {
-  const [activeTab, setActiveTab] = useState<'ORDERS' | 'MY_NOTES' | 'DOWNLOADS'>('ORDERS');
+export default function StudentDashboardPage() {
+  const { user } = useAuth();
+  const [activeTab, setActiveTab] = useState<'orders' | 'notes' | 'uploads'>('orders');
+  const [showVerificationModal, setShowVerificationModal] = useState(false);
 
-  const myUploadedNotes = MOCK_DOCUMENTS.filter(d => d.uploader_id === MOCK_CURRENT_USER.id);
+  // Active assignment orders placed by the student
+  const studentOrders = MOCK_ORDERS.filter((o) => o.student_id === 'usr_student_01');
+
+  // Purchased notes library
+  const purchasedNotes = MOCK_DOCUMENTS.slice(0, 2);
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
-      
-      {/* Top Welcome Banner */}
-      <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-6">
-        <div className="flex items-center gap-4">
-          <img
-            src={MOCK_CURRENT_USER.avatar_url}
-            alt={MOCK_CURRENT_USER.full_name}
-            className="w-16 h-16 rounded-2xl object-cover ring-4 ring-primary-50"
-          />
+    <div className="min-h-screen bg-slate-50/50 py-8 sm:py-12">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
+        
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl sm:text-2xl font-black text-slate-900">
-                Welcome back, {MOCK_CURRENT_USER.full_name}!
-              </h1>
-              <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-primary-100 text-primary-700">
-                {MOCK_CURRENT_USER.role}
-              </span>
-            </div>
-            <p className="text-xs text-slate-500 mt-0.5">
-              {MOCK_CURRENT_USER.department} • {MOCK_CURRENT_USER.institution}
+            <span className="text-xs font-bold uppercase tracking-wider text-primary-600 bg-primary-50 px-3 py-1 rounded-full border border-primary-100">
+              Student Portal
+            </span>
+            <h1 className="text-2xl sm:text-3xl font-black text-slate-900 mt-2">
+              Welcome back, {user?.full_name || 'Student'}!
+            </h1>
+            <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+              Track your active assignment projects, access purchased notes, and manage your wallet
             </p>
           </div>
-        </div>
 
-        {/* Wallet Quick Widget */}
-        <div className="flex items-center gap-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
-          <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center">
-            <Wallet className="w-5 h-5" />
-          </div>
-          <div>
-            <span className="text-[10px] uppercase font-bold text-slate-400">Wallet Balance</span>
-            <p className="text-lg font-black text-slate-900">{formatCurrency(MOCK_CURRENT_USER.wallet_balance)}</p>
-          </div>
-          <Link
-            href="/wallet"
-            className="ml-2 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-xs"
-          >
-            Top-Up
-          </Link>
-        </div>
-      </div>
-
-      {/* Metric Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-1">
-          <span className="text-xs text-slate-400 font-semibold">Active Orders</span>
-          <p className="text-2xl font-black text-slate-900">{MOCK_ORDERS.length}</p>
-          <span className="text-[11px] text-emerald-600 font-bold">In Escrow / In Progress</span>
-        </div>
-
-        <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-1">
-          <span className="text-xs text-slate-400 font-semibold">Uploaded Notes</span>
-          <p className="text-2xl font-black text-slate-900">{myUploadedNotes.length}</p>
-          <span className="text-[11px] text-primary-600 font-bold">1,240 Total Downloads</span>
-        </div>
-
-        <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-1">
-          <span className="text-xs text-slate-400 font-semibold">Notes Royalties Earned</span>
-          <p className="text-2xl font-black text-emerald-600">₦0.00</p>
-          <span className="text-[11px] text-slate-500 font-medium">Free notes published</span>
-        </div>
-
-        <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-1">
-          <span className="text-xs text-slate-400 font-semibold">Academic Rating</span>
-          <p className="text-2xl font-black text-amber-500 flex items-center gap-1">
-            <Star className="w-5 h-5 fill-amber-400" /> 4.9
-          </p>
-          <span className="text-[11px] text-slate-500 font-medium">14 Verified Reviews</span>
-        </div>
-      </div>
-
-      {/* Tabs Layout */}
-      <div className="space-y-6">
-        <div className="flex items-center gap-2 border-b border-slate-200 pb-3">
-          <button
-            onClick={() => setActiveTab('ORDERS')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-              activeTab === 'ORDERS'
-                ? 'bg-primary-600 text-white shadow-md'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            Assignment Orders ({MOCK_ORDERS.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('MY_NOTES')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-              activeTab === 'MY_NOTES'
-                ? 'bg-primary-600 text-white shadow-md'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            My Uploaded Notes ({myUploadedNotes.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('DOWNLOADS')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-              activeTab === 'DOWNLOADS'
-                ? 'bg-primary-600 text-white shadow-md'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            Saved & Downloaded Materials
-          </button>
-        </div>
-
-        {/* Tab Content 1: Orders */}
-        {activeTab === 'ORDERS' && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="font-bold text-slate-900 text-sm">Your Active Project Orders</h3>
-              <Link
-                href="/hire-writer/new"
-                className="text-xs font-bold text-primary-600 hover:underline flex items-center gap-1"
-              >
-                + New Assignment Order
-              </Link>
-            </div>
-
-            <div className="space-y-3">
-              {MOCK_ORDERS.map((order) => (
-                <div
-                  key={order.id}
-                  className="p-5 rounded-2xl bg-white border border-slate-200 shadow-xs hover:border-primary-300 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4"
-                >
-                  <div className="space-y-1.5 max-w-xl">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700">
-                        {order.id}
-                      </span>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                        {order.escrow_status}
-                      </span>
-                    </div>
-                    <h4 className="font-bold text-slate-900 text-base">{order.title}</h4>
-                    <p className="text-xs text-slate-500">
-                      Writer: <strong>{order.writer?.full_name || 'Finding matching expert...'}</strong> • Deadline: {formatDate(order.deadline)}
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-4 self-end sm:self-center">
-                    <div className="text-right">
-                      <span className="text-sm font-black text-slate-900 block">{formatCurrency(order.budget)}</span>
-                      <span className="text-[10px] text-slate-400">{order.pages_count} Pages</span>
-                    </div>
-                    <Link
-                      href={`/hire-writer/orders/${order.id}`}
-                      className="px-4 py-2 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs shadow-sm flex items-center gap-1.5"
-                    >
-                      Open Workspace <ArrowRight className="w-3.5 h-3.5" />
-                    </Link>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Tab Content 2: My Uploaded Notes */}
-        {activeTab === 'MY_NOTES' && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="font-bold text-slate-900 text-sm">Study Materials You Published</h3>
-              <Link
-                href="/notes/upload"
-                className="text-xs font-bold text-primary-600 hover:underline flex items-center gap-1"
-              >
-                + Upload New Note
-              </Link>
-            </div>
-
-            {myUploadedNotes.length === 0 ? (
-              <div className="text-center py-12 bg-white rounded-2xl border border-slate-200 space-y-3">
-                <UploadCloud className="w-10 h-10 text-slate-300 mx-auto" />
-                <p className="text-sm font-bold text-slate-700">You haven't uploaded any study materials yet</p>
-                <Link
-                  href="/notes/upload"
-                  className="px-4 py-2 rounded-xl bg-primary-600 text-white font-bold text-xs inline-block"
-                >
-                  Upload & Start Earning
-                </Link>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {myUploadedNotes.map((note) => (
-                  <div
-                    key={note.id}
-                    className="p-5 rounded-2xl bg-white border border-slate-200 flex items-center justify-between"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-primary-50 text-primary-600 flex items-center justify-center">
-                        <FileText className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h4 className="font-bold text-slate-900 text-sm">{note.title}</h4>
-                        <p className="text-xs text-slate-500">{note.course_code} • {note.downloads_count} downloads</p>
-                      </div>
-                    </div>
-                    <Link
-                      href={`/notes/${note.id}`}
-                      className="px-3.5 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                    >
-                      View Note
-                    </Link>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Tab Content 3: Downloads */}
-        {activeTab === 'DOWNLOADS' && (
-          <div className="p-8 text-center bg-white rounded-2xl border border-slate-200 space-y-3">
-            <Download className="w-10 h-10 text-slate-300 mx-auto" />
-            <h4 className="text-sm font-bold text-slate-800">Your Downloaded Library</h4>
-            <p className="text-xs text-slate-500 max-w-sm mx-auto">
-              All free and unlocked study materials remain accessible for lifetime offline re-download.
-            </p>
+          <div className="flex items-center gap-3">
             <Link
-              href="/notes"
-              className="px-4 py-2 rounded-xl bg-primary-600 text-white font-bold text-xs inline-block"
+              href="/hire-writer/new"
+              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold shadow-md shadow-primary-600/20 transition-all"
             >
-              Browse More Study Notes
+              <PenTool className="w-4 h-4" />
+              Order New Assignment
+            </Link>
+
+            <Link
+              href="/wallet"
+              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-bold shadow-xs transition-all"
+            >
+              <Wallet className="w-4 h-4 text-emerald-600" />
+              Fund Wallet
             </Link>
           </div>
+        </div>
+
+        {/* Upgrade to Verified Writer Callout Banner */}
+        <div className="p-6 sm:p-7 rounded-3xl bg-gradient-to-tr from-emerald-950 via-slate-900 to-teal-950 text-white border border-emerald-800/30 shadow-xl flex flex-col md:flex-row items-center justify-between gap-6">
+          <div className="space-y-1.5 max-w-2xl text-center md:text-left">
+            <span className="inline-flex items-center gap-1 text-[11px] font-extrabold uppercase tracking-widest text-emerald-400 bg-emerald-500/20 px-3 py-0.5 rounded-full">
+              <Sparkles className="w-3.5 h-3.5" /> Earn Up to ₦150,000 / Month
+            </span>
+            <h2 className="text-lg sm:text-xl font-black">
+              Want to write projects for other students?
+            </h2>
+            <p className="text-xs text-slate-300">
+              Pay your one-time <strong>₦3,500 verification token</strong> to become an accredited academic writer and unlock high-paying assignment jobs!
+            </p>
+          </div>
+
+          <button
+            onClick={() => setShowVerificationModal(true)}
+            className="px-5 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs shadow-lg shadow-emerald-500/30 transition-all shrink-0 flex items-center gap-2"
+          >
+            <ShieldCheck className="w-4 h-4" />
+            Get Verified for ₦3,500
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        {/* Stats Grid */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+          <div className="p-5 bg-white rounded-2xl border border-slate-200/80 shadow-xs">
+            <div className="flex items-center justify-between text-slate-500">
+              <span className="text-xs font-bold uppercase tracking-wider">Wallet Balance</span>
+              <Wallet className="w-4 h-4 text-emerald-600" />
+            </div>
+            <p className="text-2xl font-black text-slate-900 mt-2">
+              {formatCurrency(user?.wallet_balance || 18500)}
+            </p>
+            <span className="text-[11px] text-slate-500 font-semibold mt-1 block">
+              Instant note unlocks
+            </span>
+          </div>
+
+          <div className="p-5 bg-white rounded-2xl border border-slate-200/80 shadow-xs">
+            <div className="flex items-center justify-between text-slate-500">
+              <span className="text-xs font-bold uppercase tracking-wider">Active Orders</span>
+              <Clock className="w-4 h-4 text-amber-600" />
+            </div>
+            <p className="text-2xl font-black text-slate-900 mt-2">
+              {studentOrders.length}
+            </p>
+            <span className="text-[11px] text-emerald-600 font-semibold mt-1 block">
+              Protected by Escrow
+            </span>
+          </div>
+
+          <div className="p-5 bg-white rounded-2xl border border-slate-200/80 shadow-xs">
+            <div className="flex items-center justify-between text-slate-500">
+              <span className="text-xs font-bold uppercase tracking-wider">Saved Notes</span>
+              <BookOpen className="w-4 h-4 text-primary-600" />
+            </div>
+            <p className="text-2xl font-black text-slate-900 mt-2">
+              {purchasedNotes.length}
+            </p>
+            <span className="text-[11px] text-slate-500 font-semibold mt-1 block">
+              Available offline
+            </span>
+          </div>
+
+          <div className="p-5 bg-white rounded-2xl border border-slate-200/80 shadow-xs">
+            <div className="flex items-center justify-between text-slate-500">
+              <span className="text-xs font-bold uppercase tracking-wider">Total Spent</span>
+              <DollarSign className="w-4 h-4 text-indigo-600" />
+            </div>
+            <p className="text-2xl font-black text-slate-900 mt-2">
+              {formatCurrency(63500)}
+            </p>
+            <span className="text-[11px] text-slate-500 font-semibold mt-1 block">
+              Projects & Notes
+            </span>
+          </div>
+        </div>
+
+        {/* Tab Navigation */}
+        <div className="flex border-b border-slate-200 gap-6 text-sm font-bold">
+          <button
+            onClick={() => setActiveTab('orders')}
+            className={`pb-3 transition-colors relative ${
+              activeTab === 'orders'
+                ? 'text-primary-700 border-b-2 border-primary-600'
+                : 'text-slate-500 hover:text-slate-900'
+            }`}
+          >
+            My Writing Orders ({studentOrders.length})
+          </button>
+
+          <button
+            onClick={() => setActiveTab('notes')}
+            className={`pb-3 transition-colors relative ${
+              activeTab === 'notes'
+                ? 'text-primary-700 border-b-2 border-primary-600'
+                : 'text-slate-500 hover:text-slate-900'
+            }`}
+          >
+            My Downloaded Notes ({purchasedNotes.length})
+          </button>
+        </div>
+
+        {/* Tab 1: Orders */}
+        {activeTab === 'orders' && (
+          <div className="space-y-4">
+            {studentOrders.map((order) => (
+              <div
+                key={order.id}
+                className="p-6 bg-white rounded-2xl border border-slate-200/80 shadow-xs hover:border-primary-300 transition-all flex flex-col md:flex-row md:items-center justify-between gap-4"
+              >
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span
+                      className={`text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full ${
+                        order.status === 'IN_PROGRESS'
+                          ? 'bg-amber-100 text-amber-800'
+                          : order.status === 'IN_REVIEW'
+                          ? 'bg-indigo-100 text-indigo-800'
+                          : 'bg-red-100 text-red-800'
+                      }`}
+                    >
+                      {order.status}
+                    </span>
+                    <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-slate-100 text-slate-600">
+                      {order.service_type}
+                    </span>
+                  </div>
+
+                  <h3 className="text-base sm:text-lg font-bold text-slate-900">
+                    {order.title}
+                  </h3>
+
+                  <div className="flex items-center gap-4 text-xs text-slate-500">
+                    <span><strong>Assigned Writer:</strong> {order.writer?.full_name}</span>
+                    <span>•</span>
+                    <span><strong>Deadline:</strong> {formatDate(order.deadline)}</span>
+                    <span>•</span>
+                    <span className="text-emerald-700 font-bold">
+                      <strong>Escrow:</strong> {formatCurrency(order.budget)} HELD
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 pt-3 md:pt-0 border-t md:border-t-0 border-slate-100">
+                  <Link
+                    href={`/hire-writer/orders/${order.id}`}
+                    className="px-4 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs shadow-md shadow-primary-600/20 transition-all flex items-center gap-1.5"
+                  >
+                    Open Workspace & Chat
+                    <ChevronRight className="w-4 h-4" />
+                  </Link>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Tab 2: Notes Library */}
+        {activeTab === 'notes' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {purchasedNotes.map((note) => (
+              <div
+                key={note.id}
+                className="p-5 bg-white rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between gap-4"
+              >
+                <div className="space-y-1">
+                  <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-primary-50 text-primary-700">
+                    {note.course_code}
+                  </span>
+                  <h4 className="text-sm font-bold text-slate-900 line-clamp-1">{note.title}</h4>
+                  <p className="text-xs text-slate-500">{note.institution} • {note.page_count} Pages</p>
+                </div>
+
+                <Link
+                  href={`/notes/${note.id}`}
+                  className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs transition-colors flex items-center gap-1.5 shrink-0"
+                >
+                  <Download className="w-3.5 h-3.5" /> Read
+                </Link>
+              </div>
+            ))}
+          </div>
         )}
 
       </div>
 
+      {/* Writer Verification Token Modal */}
+      <WriterVerificationModal
+        isOpen={showVerificationModal}
+        onClose={() => setShowVerificationModal(false)}
+        onSuccess={() => setShowVerificationModal(false)}
+      />
     </div>
   );
 }
