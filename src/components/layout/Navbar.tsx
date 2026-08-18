@@ -11,7 +11,6 @@ import {
   Menu, 
   X, 
   User, 
-  ShieldCheck, 
   ChevronDown,
   LayoutDashboard,
   Shield,
@@ -28,8 +27,8 @@ export function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
 
-  const handleSignOut = () => {
-    logout();
+  const handleSignOut = async () => {
+    await logout();
     setUserDropdownOpen(false);
     router.push('/');
   };
@@ -98,8 +97,8 @@ export function Navbar() {
               </span>
             </Link>
 
-            {/* If Logged In: Show Role Dashboard Link */}
-            {isLoggedIn && (
+            {/* If Logged In: Show designated Role Dashboard Link */}
+            {isLoggedIn && user && (
               <Link
                 href={getDashboardHref()}
                 className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-semibold transition-all ${
@@ -108,7 +107,13 @@ export function Navbar() {
                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
                 }`}
               >
-                <LayoutDashboard className="w-4 h-4 text-indigo-600" />
+                {user.role === 'ADMIN' ? (
+                  <Shield className="w-4 h-4 text-indigo-600" />
+                ) : user.role === 'WRITER' ? (
+                  <PenTool className="w-4 h-4 text-emerald-600" />
+                ) : (
+                  <LayoutDashboard className="w-4 h-4 text-primary-600" />
+                )}
                 {getDashboardLabel()}
               </Link>
             )}
@@ -173,7 +178,7 @@ export function Navbar() {
                           onClick={() => setUserDropdownOpen(false)}
                           className="flex items-center gap-2 px-3 py-2 rounded-lg text-slate-700 hover:bg-slate-50 font-medium"
                         >
-                          <Wallet className="w-4 h-4 text-slate-400" /> Wallet & Top-up
+                          <Wallet className="w-4 h-4 text-slate-400" /> Wallet Balance
                         </Link>
                         <Link
                           href="/notes/upload"
@@ -182,6 +187,29 @@ export function Navbar() {
                         >
                           <UploadCloud className="w-4 h-4 text-slate-400" /> Upload Notes
                         </Link>
+
+                        {/* If Admin: Show direct link to other portals for preview */}
+                        {user.role === 'ADMIN' && (
+                          <div className="pt-2 border-t border-slate-100">
+                            <span className="text-[10px] uppercase font-bold text-slate-400 px-3 py-1 block">
+                              Admin Switcher:
+                            </span>
+                            <Link
+                              href="/dashboard"
+                              onClick={() => setUserDropdownOpen(false)}
+                              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-slate-600 hover:bg-slate-50 text-[11px]"
+                            >
+                              <User className="w-3.5 h-3.5 text-slate-400" /> Preview Student View
+                            </Link>
+                            <Link
+                              href="/writer-dashboard"
+                              onClick={() => setUserDropdownOpen(false)}
+                              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-slate-600 hover:bg-slate-50 text-[11px]"
+                            >
+                              <PenTool className="w-3.5 h-3.5 text-slate-400" /> Preview Writer View
+                            </Link>
+                          </div>
+                        )}
                       </div>
 
                       <div className="border-t border-slate-100 mt-1 pt-1">
@@ -197,7 +225,6 @@ export function Navbar() {
                 </div>
               </>
             ) : (
-              /* If NOT Logged In: Show Login & Register CTA Buttons */
               <div className="flex items-center gap-2.5">
                 <Link
                   href="/login"

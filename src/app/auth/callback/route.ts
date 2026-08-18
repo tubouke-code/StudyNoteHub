@@ -5,7 +5,6 @@ import { NextResponse } from 'next/server';
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get('code');
-  const next = searchParams.get('next') || '/';
 
   if (code) {
     const cookieStore = cookies();
@@ -30,9 +29,9 @@ export async function GET(request: Request) {
     const { data, error } = await supabase.auth.exchangeCodeForSession(code);
 
     if (!error && data?.user) {
-      const userEmail = data.user.email?.toLowerCase();
+      const userEmail = data.user.email?.toLowerCase() || '';
 
-      // Check if user is Admin or Super Admin
+      // ONLY your specific email is automatically the Super Admin
       if (userEmail === 'orukari878@gmail.com') {
         return NextResponse.redirect(`${origin}/admin`);
       }
@@ -44,16 +43,21 @@ export async function GET(request: Request) {
         .eq('id', data.user.id)
         .single();
 
-      if (profile?.role === 'ADMIN' || profile?.admin_permission) {
+      // If designated as ADMIN by the Super Admin in database
+      if (profile?.role === 'ADMIN' && profile?.admin_permission) {
         return NextResponse.redirect(`${origin}/admin`);
-      } else if (profile?.role === 'WRITER') {
+      } 
+      // If signed up as WRITER
+      else if (profile?.role === 'WRITER' || data.user.user_metadata?.role === 'WRITER') {
         return NextResponse.redirect(`${origin}/writer-dashboard`);
-      } else {
+      } 
+      // All other normal users / students go to the Student Dashboard!
+      else {
         return NextResponse.redirect(`${origin}/dashboard`);
       }
     }
   }
 
-  // Return the user to an error or default landing page
-  return NextResponse.redirect(`${origin}/login?error=oauth_failed`);
+  // Fallback
+  return NextResponse.redirect(`${origin}/dashboard`);
 }
