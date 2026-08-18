@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { 
@@ -24,14 +24,22 @@ export function Navbar() {
   const pathname = usePathname();
   const router = useRouter();
   const { user, isLoggedIn, logout } = useAuth();
+  const [mounted, setMounted] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const handleSignOut = async () => {
     await logout();
     setUserDropdownOpen(false);
     router.push('/');
   };
+
+  // Safe authenticated state
+  const isAuthReady = mounted && isLoggedIn && !!user;
 
   // Determine user dashboard link based on role
   const getDashboardHref = () => {
@@ -98,7 +106,7 @@ export function Navbar() {
             </Link>
 
             {/* If Logged In: Show designated Role Dashboard Link */}
-            {isLoggedIn && user && (
+            {isAuthReady && (
               <Link
                 href={getDashboardHref()}
                 className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-semibold transition-all ${
@@ -121,7 +129,7 @@ export function Navbar() {
 
           {/* Right Action Buttons */}
           <div className="hidden sm:flex items-center gap-3">
-            {isLoggedIn && user ? (
+            {isAuthReady ? (
               <>
                 {/* Upload Button */}
                 <Link
@@ -247,7 +255,7 @@ export function Navbar() {
 
           {/* Mobile menu toggle */}
           <div className="flex md:hidden items-center gap-2">
-            {!isLoggedIn ? (
+            {!isAuthReady ? (
               <Link
                 href="/login"
                 className="px-3 py-1.5 rounded-lg bg-primary-600 text-white text-xs font-bold"
@@ -291,7 +299,7 @@ export function Navbar() {
             <PenTool className="w-4 h-4 text-emerald-600" /> Hire a Writer
           </Link>
           
-          {isLoggedIn ? (
+          {isAuthReady ? (
             <>
               <Link
                 href={getDashboardHref()}
