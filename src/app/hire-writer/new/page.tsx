@@ -465,8 +465,9 @@ function OrderWizardContent() {
       <PaymentModal
         isOpen={showPaymentModal}
         onClose={() => setShowPaymentModal(false)}
-        documentTitle={title || 'Custom Assignment Order'}
+        title={title || 'Custom Assignment Order'}
         amount={totalBudget}
+        itemType="ESCROW_FUNDING"
         onSuccess={() => {
           setShowPaymentModal(false);
           router.push('/dashboard');
