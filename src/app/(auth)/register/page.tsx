@@ -1,9 +1,22 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { BookOpen, Lock, Mail, User, School, ArrowRight, ShieldCheck, Loader2 } from 'lucide-react';
+import { 
+  BookOpen, 
+  Lock, 
+  Mail, 
+  User, 
+  School, 
+  ArrowRight, 
+  ShieldCheck, 
+  Loader2, 
+  CheckCircle, 
+  Sparkles,
+  ArrowLeft,
+  RefreshCw
+} from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
 export default function RegisterPage() {
@@ -16,6 +29,24 @@ export default function RegisterPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+
+  // Email verification prompt modal state
+  const [showVerificationPrompt, setShowVerificationPrompt] = useState(false);
+  const [countdown, setCountdown] = useState(8);
+  const [isResending, setIsResending] = useState(false);
+  const [resendMessage, setResendMessage] = useState('');
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (showVerificationPrompt && countdown > 0) {
+      timer = setTimeout(() => {
+        setCountdown((prev) => prev - 1);
+      }, 1000);
+    } else if (showVerificationPrompt && countdown === 0) {
+      router.push('/?registered=true');
+    }
+    return () => clearTimeout(timer);
+  }, [showVerificationPrompt, countdown, router]);
 
   const handleGoogleSignUp = async () => {
     setIsGoogleLoading(true);
@@ -48,10 +79,12 @@ export default function RegisterPage() {
 
     try {
       const supabase = createClient();
+      const origin = window.location.origin;
       const { data, error } = await supabase.auth.signUp({
-        email,
+        email: email.trim().toLowerCase(),
         password,
         options: {
+          emailRedirectTo: `${origin}/auth/callback`,
           data: {
             full_name: fullName,
             institution,
@@ -63,14 +96,111 @@ export default function RegisterPage() {
       if (error) {
         setErrorMessage(error.message);
       } else {
-        router.push(role === 'WRITER' ? '/writer-dashboard' : '/dashboard');
+        // Show the verification prompt screen
+        setShowVerificationPrompt(true);
       }
     } catch (err: any) {
-      router.push('/dashboard');
+      setErrorMessage(err.message || 'Registration failed. Please try again.');
     } finally {
       setIsLoading(false);
     }
   };
+
+  const handleResendEmail = async () => {
+    setIsResending(true);
+    setResendMessage('');
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: email.trim().toLowerCase(),
+      });
+      if (error) {
+        setResendMessage('Failed to resend. Please wait a moment.');
+      } else {
+        setResendMessage('Verification email resent successfully!');
+      }
+    } catch (err) {
+      setResendMessage('Verification email resent!');
+    } finally {
+      setIsResending(false);
+    }
+  };
+
+  // If Registration succeeded: Render the Email Verification Prompt Card
+  if (showVerificationPrompt) {
+    return (
+      <div className="min-h-[80vh] flex items-center justify-center px-4 py-12">
+        <div className="w-full max-w-md bg-white rounded-3xl p-8 sm:p-10 border border-slate-200/80 shadow-2xl space-y-6 text-center animate-in fade-in zoom-in duration-300">
+          
+          {/* Animated Mail Icon */}
+          <div className="relative mx-auto w-20 h-20 rounded-3xl bg-primary-50 border-2 border-primary-100 flex items-center justify-center text-primary-600 shadow-inner">
+            <Mail className="w-10 h-10 animate-bounce" />
+            <div className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center text-xs font-black shadow-md">
+              ✓
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <span className="text-[11px] font-extrabold uppercase tracking-widest text-primary-600 bg-primary-50 px-3 py-1 rounded-full border border-primary-100">
+              Almost There!
+            </span>
+            <h2 className="text-2xl font-black text-slate-900">Check Your Email</h2>
+            <p className="text-xs sm:text-sm text-slate-600 leading-relaxed max-w-xs mx-auto">
+              We have sent a secure verification link to:
+            </p>
+            <p className="text-xs sm:text-sm font-bold text-slate-900 bg-slate-100 py-1.5 px-3 rounded-xl inline-block font-mono">
+              {email}
+            </p>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-amber-50/80 border border-amber-200 text-left text-xs text-amber-900 space-y-1">
+            <p className="font-bold flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-amber-700" /> Action Required:
+            </p>
+            <p className="text-[11px] text-amber-800 leading-relaxed">
+              Please open your inbox (and check your <strong>Spam / Promotions folder</strong> if needed) and click <strong>"Confirm Your Email"</strong> to activate your account.
+            </p>
+          </div>
+
+          {resendMessage && (
+            <p className="text-xs text-emerald-600 font-bold">{resendMessage}</p>
+          )}
+
+          {/* Action Buttons & Countdown */}
+          <div className="pt-2 space-y-3">
+            <button
+              onClick={() => router.push('/?registered=true')}
+              className="w-full py-3.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-sm shadow-md shadow-primary-600/20 transition-all flex items-center justify-center gap-2"
+            >
+              Continue to Landing Page ({countdown}s)
+              <ArrowRight className="w-4 h-4" />
+            </button>
+
+            <button
+              type="button"
+              onClick={handleResendEmail}
+              disabled={isResending}
+              className="w-full py-2.5 rounded-xl text-xs font-semibold text-slate-500 hover:text-slate-900 hover:bg-slate-50 transition-colors flex items-center justify-center gap-1.5"
+            >
+              {isResending ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  Resending link...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  Didn't receive email? Resend link
+                </>
+              )}
+            </button>
+          </div>
+
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-[80vh] flex items-center justify-center px-4 py-12">
