@@ -24,15 +24,54 @@ import { formatCurrency } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { PaymentModal } from '@/components/payments/PaymentModal';
 
+// Each service has its own distinct complexity multiplier
 const SERVICE_TYPES = [
-  { id: 'essay', name: 'Assignment / Essay / Term Paper', multiplier: 1.0, icon: '📝' },
-  { id: 'project', name: 'Final Year Project (Chapters 1-5)', multiplier: 1.3, icon: '📚' },
-  { id: 'slides', name: 'PowerPoint Slide Presentation & Defense Deck', multiplier: 0.9, icon: '📊', isSlide: true },
-  { id: 'data_analysis', name: 'Data Analysis (SPSS, STATA, Python, R)', multiplier: 1.5, icon: '📈' },
-  { id: 'thesis', name: 'Thesis / Dissertation & Proposal', multiplier: 1.4, icon: '🎓' },
-  { id: 'proofreading', name: 'Editing, Proofreading & Turnitin Paraphrasing', multiplier: 0.7, icon: '✨' },
+  { 
+    id: 'essay', 
+    name: 'Assignment / Essay / Term Paper', 
+    desc: 'Standard academic coursework and essays',
+    multiplier: 1.0, 
+    icon: '📝' 
+  },
+  { 
+    id: 'project', 
+    name: 'Final Year Project (Chapters 1-5)', 
+    desc: 'Full research methodology & literature review (+40%)',
+    multiplier: 1.4, 
+    icon: '📚' 
+  },
+  { 
+    id: 'data_analysis', 
+    name: 'Data Analysis (SPSS, STATA, Python, R)', 
+    desc: 'Empirical data modeling, ANOVA & regressions (+80%)',
+    multiplier: 1.8, 
+    icon: '📈' 
+  },
+  { 
+    id: 'slides', 
+    name: 'PowerPoint Slide Presentation & Defense Deck', 
+    desc: 'Executive slide design with charts',
+    multiplier: 1.0, 
+    icon: '📊', 
+    isSlide: true 
+  },
+  { 
+    id: 'thesis', 
+    name: 'Thesis / Dissertation Proposal', 
+    desc: 'Comprehensive research concept & synopses (+50%)',
+    multiplier: 1.5, 
+    icon: '🎓' 
+  },
+  { 
+    id: 'proofreading', 
+    name: 'Proofreading, Formatting & Turnitin Paraphrasing', 
+    desc: 'Grammar review and plagiarism reduction (-40%)',
+    multiplier: 0.6, 
+    icon: '✨' 
+  },
 ];
 
+// Academic Level Base Rates
 const ACADEMIC_LEVELS = [
   { id: 'undergrad', name: 'Undergraduate (100L - 500L)', rate: 1000 },
   { id: 'postgrad', name: 'Post-Graduate (Masters / MBA / M.Sc)', rate: 2000 },
@@ -40,10 +79,10 @@ const ACADEMIC_LEVELS = [
 ];
 
 const URGENCY_OPTIONS = [
-  { id: 'relaxed', name: '7+ Days (Standard)', multiplier: 1.0, badge: 'No Rush Fee' },
-  { id: 'normal', name: '3 - 6 Days (Moderate)', multiplier: 1.2, badge: '+20% Rush' },
-  { id: 'urgent', name: '24 - 48 Hours (Urgent)', multiplier: 1.6, badge: '+60% Priority' },
-  { id: 'emergency', name: '12 Hours (Emergency Rush)', multiplier: 2.0, badge: '2x Rush' },
+  { id: 'relaxed', name: '7+ Days (Standard)', multiplier: 1.0, badge: 'Standard (No Rush Fee)' },
+  { id: 'normal', name: '3 - 6 Days (Moderate)', multiplier: 1.2, badge: '+20% Moderate Rush' },
+  { id: 'urgent', name: '24 - 48 Hours (Urgent)', multiplier: 1.6, badge: '+60% Urgent Priority' },
+  { id: 'emergency', name: '12 Hours (Emergency Rush)', multiplier: 2.0, badge: '2x Emergency Rush' },
 ];
 
 const CITATION_STYLES = ['APA 7th', 'Harvard', 'IEEE', 'MLA 9th', 'Chicago', 'OSCOLA (Law)'];
@@ -70,7 +109,7 @@ function OrderWizardContent() {
   const [instructions, setInstructions] = useState('');
   const [showPaymentModal, setShowPaymentModal] = useState(false);
 
-  // Dynamic Price Calculations
+  // Dynamic Calculations based on chosen Service AND Academic Level
   const selectedServiceObj = SERVICE_TYPES.find((s) => s.id === serviceType) || SERVICE_TYPES[0];
   const selectedLevelObj = ACADEMIC_LEVELS.find((l) => l.id === academicLevel) || ACADEMIC_LEVELS[0];
   const selectedUrgencyObj = URGENCY_OPTIONS.find((u) => u.id === urgency) || URGENCY_OPTIONS[0];
@@ -78,9 +117,12 @@ function OrderWizardContent() {
   const isSlideService = selectedServiceObj.id === 'slides';
   const unitCount = isSlideService ? slidesCount : pagesCount;
   
-  // Base cost calculation with updated rates: 1k (undergrad), 2k (postgrad), 3k (phd)
-  const baseRate = isSlideService ? 1000 : selectedLevelObj.rate;
-  const rawCost = unitCount * baseRate * selectedServiceObj.multiplier;
+  // Specific Rate per unit for this exact service and level
+  const effectiveRatePerUnit = Math.round(
+    (isSlideService ? 1000 : selectedLevelObj.rate) * selectedServiceObj.multiplier
+  );
+
+  const rawCost = unitCount * effectiveRatePerUnit;
   const speakerNotesFee = isSlideService && includeSpeakerNotes ? slidesCount * 300 : 0;
   
   const subtotalBeforeRush = rawCost + speakerNotesFee;
@@ -112,7 +154,7 @@ function OrderWizardContent() {
             Order Custom Academic Work or Slide Deck
           </h1>
           <p className="text-xs sm:text-sm text-slate-500">
-            Funds remain safely locked in Escrow. Zero risk — writer is only paid after you review and approve the Turnitin report.
+            Dynamic service rates: ₦1,000 (Undergraduate), ₦2,000 (Postgraduate), ₦3,000 (Doctorate) scaled by project complexity.
           </p>
         </div>
 
@@ -121,39 +163,60 @@ function OrderWizardContent() {
           {/* Left Columns: Wizard Configuration */}
           <div className="lg:col-span-2 space-y-6">
             
-            {/* Step 1: Service Type */}
+            {/* Step 1: Service Type with distinct price tags */}
             <div className="p-6 bg-white rounded-3xl border border-slate-200/80 shadow-xs space-y-3">
-              <label className="text-xs font-black uppercase tracking-wider text-slate-700 block">
-                1. Select Academic Service Type
-              </label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                {SERVICE_TYPES.map((service) => (
-                  <button
-                    key={service.id}
-                    type="button"
-                    onClick={() => setServiceType(service.id)}
-                    className={`p-3.5 rounded-2xl border-2 text-left transition-all flex items-center justify-between ${
-                      serviceType === service.id
-                        ? 'border-emerald-600 bg-emerald-50/60 text-emerald-950 shadow-xs'
-                        : 'border-slate-200 hover:border-slate-300 text-slate-700 bg-white'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <span className="text-lg">{service.icon}</span>
-                      <span className="text-xs font-bold leading-snug">{service.name}</span>
-                    </div>
-                    {serviceType === service.id && (
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                    )}
-                  </button>
-                ))}
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-black uppercase tracking-wider text-slate-700">
+                  1. Select Academic Service Type
+                </label>
+                <span className="text-[10px] font-bold text-slate-400">Prices adapt per service complexity</span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {SERVICE_TYPES.map((service) => {
+                  const serviceSpecificRate = Math.round(
+                    (service.id === 'slides' ? 1000 : selectedLevelObj.rate) * service.multiplier
+                  );
+
+                  return (
+                    <button
+                      key={service.id}
+                      type="button"
+                      onClick={() => setServiceType(service.id)}
+                      className={`p-4 rounded-2xl border-2 text-left transition-all flex flex-col justify-between space-y-2 ${
+                        serviceType === service.id
+                          ? 'border-emerald-600 bg-emerald-50/70 text-emerald-950 shadow-xs'
+                          : 'border-slate-200 hover:border-slate-300 text-slate-700 bg-white'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xl">{service.icon}</span>
+                          <span className="text-xs font-black leading-snug">{service.name}</span>
+                        </div>
+                        {serviceType === service.id && (
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                        )}
+                      </div>
+
+                      <p className="text-[11px] text-slate-500 line-clamp-1">{service.desc}</p>
+
+                      <div className="pt-1 border-t border-slate-100 flex items-center justify-between">
+                        <span className="text-[10px] text-slate-400 font-bold uppercase">Effective Rate:</span>
+                        <span className="text-xs font-black text-emerald-700">
+                          {formatCurrency(serviceSpecificRate)} <span className="text-[10px] font-normal text-slate-500">/ {service.isSlide ? 'slide' : 'page'}</span>
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
-            {/* Step 2: Academic Level & Scope (Pages / Slides) */}
+            {/* Step 2: Academic Level & Scope */}
             <div className="p-6 bg-white rounded-3xl border border-slate-200/80 shadow-xs space-y-4">
               <label className="text-xs font-black uppercase tracking-wider text-slate-700 block">
-                2. Academic Level & Rates
+                2. Academic Level & Base Rates
               </label>
               
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
@@ -169,7 +232,9 @@ function OrderWizardContent() {
                     }`}
                   >
                     <span className="block text-xs font-black">{level.name.split('(')[0]}</span>
-                    <span className="text-sm font-black text-emerald-700 block mt-0.5">{formatCurrency(level.rate)}<span className="text-[10px] font-normal text-slate-500"> / pg</span></span>
+                    <span className="text-sm font-black text-emerald-700 block mt-0.5">
+                      {formatCurrency(level.rate)}<span className="text-[10px] font-normal text-slate-500"> / pg</span>
+                    </span>
                   </button>
                 ))}
               </div>
@@ -332,9 +397,9 @@ function OrderWizardContent() {
                 </div>
 
                 <div className="flex justify-between text-slate-600">
-                  <span>Base Rate:</span>
+                  <span>Service Unit Rate:</span>
                   <span className="font-bold text-emerald-700">
-                    {formatCurrency(baseRate)} / {isSlideService ? 'slide' : 'page'}
+                    {formatCurrency(effectiveRatePerUnit)} / {isSlideService ? 'slide' : 'page'}
                   </span>
                 </div>
 
@@ -365,7 +430,7 @@ function OrderWizardContent() {
               <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200/80 text-[11px] text-emerald-950 space-y-1.5">
                 <div className="flex items-center gap-1.5 font-bold">
                   <ShieldCheck className="w-4 h-4 text-emerald-700" />
-                  <span>How Escrow Protects You:</span>
+                  <span>Escrow Protection Summary:</span>
                 </div>
                 <p className="text-emerald-900 leading-relaxed">
                   Your <strong>{formatCurrency(totalBudget)}</strong> is safely held by StudyNoteHub. The writer receives their 85% cut (<strong>{formatCurrency(writerEarnings)}</strong>) only after you inspect and accept the final deliverable.
