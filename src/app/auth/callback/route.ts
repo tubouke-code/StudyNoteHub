@@ -65,6 +65,7 @@ export async function GET(request: Request) {
             email: userEmail,
             options: {
               shouldCreateUser: false,
+              emailRedirectTo: `${origin}/auth/callback`,
             },
           });
         } catch (e) {

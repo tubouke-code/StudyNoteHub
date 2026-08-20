@@ -134,6 +134,7 @@ function VerifyEmailContent() {
         email: email.trim().toLowerCase(),
         options: {
           shouldCreateUser: false,
+          emailRedirectTo: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : undefined,
         },
       });
 
