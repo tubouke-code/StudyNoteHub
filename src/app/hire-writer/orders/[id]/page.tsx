@@ -166,7 +166,6 @@ export default function OrderWorkspacePage({ params }: { params: { id: string } 
 
         setIsReleasing(false);
         setEscrowReleased(true);
-        alert('Escrow released successfully! 85% payout has been credited to the writer wallet.');
       } catch (err) {
         console.error('Error releasing escrow:', err);
         setIsReleasing(false);

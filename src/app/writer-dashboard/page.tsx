@@ -300,7 +300,6 @@ export default function WriterDashboardPage() {
         onClose={() => setShowVerificationModal(false)}
         onSuccess={() => {
           setShowVerificationModal(false);
-          alert('Accreditation submitted! Your writer profile is now verified.');
         }}
       />
     </div>

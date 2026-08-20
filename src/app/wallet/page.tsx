@@ -86,6 +86,10 @@ export default function WalletPage() {
   const [accountName, setAccountName] = useState('');
   const [isProcessingWithdraw, setIsProcessingWithdraw] = useState(false);
 
+  // In-modal validation error states
+  const [depositError, setDepositError] = useState<string | null>(null);
+  const [withdrawError, setWithdrawError] = useState<string | null>(null);
+
   // Modern Success Receipt Modal State
   const [successReceipt, setSuccessReceipt] = useState<SuccessReceiptData | null>(null);
   const [copiedRef, setCopiedRef] = useState(false);
@@ -123,10 +127,11 @@ export default function WalletPage() {
   // Handle Deposit Submit
   const handleDeposit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setDepositError(null);
     const amount = Number(customDepositInput) || 0;
 
     if (amount < MIN_DEPOSIT) {
-      alert(`Minimum deposit amount is ${formatCurrency(MIN_DEPOSIT)}.`);
+      setDepositError(`Minimum deposit amount is ${formatCurrency(MIN_DEPOSIT)}.`);
       return;
     }
 
@@ -171,6 +176,7 @@ export default function WalletPage() {
 
     } catch (err) {
       console.error(err);
+      setDepositError('Failed to process deposit. Please try again.');
     } finally {
       setIsProcessingDeposit(false);
     }
@@ -179,18 +185,19 @@ export default function WalletPage() {
   // Handle Withdrawal Submit
   const handleWithdraw = async (e: React.FormEvent) => {
     e.preventDefault();
+    setWithdrawError(null);
     const amount = Number(customWithdrawInput) || 0;
 
     if (amount < MIN_WITHDRAWAL) {
-      alert(`Minimum withdrawal amount is ${formatCurrency(MIN_WITHDRAWAL)}.`);
+      setWithdrawError(`Minimum withdrawal amount is ${formatCurrency(MIN_WITHDRAWAL)}.`);
       return;
     }
     if (amount > balance) {
-      alert('Insufficient wallet balance.');
+      setWithdrawError('Insufficient wallet balance.');
       return;
     }
     if (!accountNumber || accountNumber.length !== 10) {
-      alert('Please enter a valid 10-digit NUBAN account number.');
+      setWithdrawError('Please enter a valid 10-digit NUBAN account number.');
       return;
     }
 
@@ -235,6 +242,7 @@ export default function WalletPage() {
 
     } catch (err) {
       console.error(err);
+      setWithdrawError('Failed to process withdrawal. Please try again.');
     } finally {
       setIsProcessingWithdraw(false);
     }
@@ -525,6 +533,13 @@ export default function WalletPage() {
                 </div>
               </div>
 
+              {depositError && (
+                <div className="p-3.5 rounded-2xl bg-red-50 border border-red-200 text-xs text-red-700 flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span className="font-semibold">{depositError}</span>
+                </div>
+              )}
+
               {/* Submit CTA */}
               <button
                 type="submit"
@@ -705,6 +720,13 @@ export default function WalletPage() {
                   <span>{formatCurrency(Math.max(0, (Number(customWithdrawInput) || 0) - 50))}</span>
                 </div>
               </div>
+
+              {withdrawError && (
+                <div className="p-3.5 rounded-2xl bg-red-50 border border-red-200 text-xs text-red-700 flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span className="font-semibold">{withdrawError}</span>
+                </div>
+              )}
 
               {/* Actions */}
               <div className="flex gap-2 pt-2">

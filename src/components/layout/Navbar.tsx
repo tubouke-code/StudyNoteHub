@@ -33,37 +33,69 @@ export function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
-
-  const [notifications] = useState([
-    {
-      id: 'notif_1',
-      title: 'Royalty Credited! ₦1,350',
-      desc: 'Someone unlocked your ECO 201 Macroeconomics note.',
-      time: '10m ago',
-      icon: '💰',
-      unread: true,
-    },
-    {
-      id: 'notif_2',
-      title: 'Draft & Turnitin Delivered',
-      desc: 'Dr. Emeka submitted Chapter 4 & 5 with 2.4% originality.',
-      time: '1h ago',
-      icon: '📄',
-      unread: true,
-    },
-    {
-      id: 'notif_3',
-      title: 'Referral Bonus ₦750',
-      desc: 'Your course mate registered and purchased their first note.',
-      time: '3h ago',
-      icon: '🎁',
-      unread: false,
-    },
-  ]);
+  const [notifications, setNotifications] = useState<Array<{
+    id: string;
+    title: string;
+    desc: string;
+    time: string;
+    icon: string;
+    unread: boolean;
+  }>>([]);
 
   useEffect(() => {
     setMounted(true);
-  }, []);
+    async function loadLiveNotifications() {
+      if (!user) {
+        setNotifications([]);
+        return;
+      }
+      try {
+        const { createClient } = await import('@/lib/supabase/client');
+        const supabase = createClient();
+        const { data: txns } = await supabase
+          .from('transactions')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(5);
+
+        if (txns && txns.length > 0) {
+          const formatted = txns.map((t) => {
+            let icon = '💳';
+            let title = t.description || 'Transaction Update';
+            if (t.type === 'WALLET_DEPOSIT') {
+              icon = '💰';
+              title = `Wallet Funded +${formatCurrency(t.amount)}`;
+            } else if (t.type === 'NOTE_SALE_ROYALTY') {
+              icon = '📚';
+              title = `Royalty Credited +${formatCurrency(t.amount)}`;
+            } else if (t.type === 'BANK_WITHDRAWAL') {
+              icon = '🏦';
+              title = `Payout Dispatched ${formatCurrency(Math.abs(t.amount))}`;
+            } else if (t.type === 'ESCROW_PAYOUT') {
+              icon = '🛡️';
+              title = `Milestone Escrow Released +${formatCurrency(t.amount)}`;
+            }
+            return {
+              id: t.id,
+              title,
+              desc: t.description || `Reference: ${t.reference}`,
+              time: new Date(t.created_at).toLocaleDateString(),
+              icon,
+              unread: false,
+            };
+          });
+          setNotifications(formatted);
+        } else {
+          setNotifications([]);
+        }
+      } catch (err) {
+        console.error('Error loading notifications:', err);
+      }
+    }
+
+    loadLiveNotifications();
+  }, [user]);
 
   const handleSignOut = async () => {
     await logout();
@@ -186,27 +218,45 @@ export function Navbar() {
                     className="p-2 rounded-xl text-slate-600 hover:bg-slate-100 relative"
                   >
                     <Bell className="w-4 h-4" />
-                    <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500 animate-ping" />
-                    <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500" />
+                    {notifications.length > 0 && (
+                      <>
+                        <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500 animate-ping" />
+                        <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500" />
+                      </>
+                    )}
                   </button>
 
                   {notificationsOpen && (
-                    <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-2xl border border-slate-100 py-3 z-50">
+                    <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-2xl border border-slate-100 py-3 z-50 animate-in fade-in">
                       <div className="px-4 pb-2 border-b border-slate-100 flex items-center justify-between">
                         <span className="text-xs font-bold text-slate-900">Notifications</span>
-                        <span className="text-[10px] text-primary-600 font-semibold cursor-pointer">Mark all as read</span>
+                        <span className="text-[10px] text-slate-400 font-medium">Live Activity</span>
                       </div>
-                      <div className="divide-y divide-slate-100 max-h-64 overflow-y-auto">
-                        {notifications.map((n) => (
-                          <div key={n.id} className="p-3 hover:bg-slate-50 transition-colors flex items-start gap-3 cursor-pointer">
-                            <span className="text-lg">{n.icon}</span>
-                            <div className="space-y-0.5">
-                              <p className="text-xs font-bold text-slate-900">{n.title}</p>
-                              <p className="text-[11px] text-slate-500 leading-tight">{n.desc}</p>
-                              <span className="text-[10px] text-slate-400 block pt-0.5">{n.time}</span>
+                      <div className="max-h-64 overflow-y-auto">
+                        {notifications.length === 0 ? (
+                          <div className="p-6 text-center space-y-2">
+                            <div className="w-10 h-10 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+                              <Bell className="w-5 h-5" />
                             </div>
+                            <p className="text-xs font-bold text-slate-800">No new notifications</p>
+                            <p className="text-[11px] text-slate-400 leading-tight">
+                              You'll receive alerts when orders, royalties, and payouts occur.
+                            </p>
                           </div>
-                        ))}
+                        ) : (
+                          <div className="divide-y divide-slate-100">
+                            {notifications.map((n) => (
+                              <div key={n.id} className="p-3 hover:bg-slate-50 transition-colors flex items-start gap-3">
+                                <span className="text-lg">{n.icon}</span>
+                                <div className="space-y-0.5">
+                                  <p className="text-xs font-bold text-slate-900">{n.title}</p>
+                                  <p className="text-[11px] text-slate-500 leading-tight">{n.desc}</p>
+                                  <span className="text-[10px] text-slate-400 block pt-0.5">{n.time}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}

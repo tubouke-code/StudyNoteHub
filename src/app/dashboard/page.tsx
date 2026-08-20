@@ -323,7 +323,6 @@ export default function StudentDashboardPage() {
         onClose={() => setShowVerificationModal(false)}
         onSuccess={() => {
           setShowVerificationModal(false);
-          alert('Accreditation submitted! Your writer profile is now ready.');
         }}
       />
     </div>

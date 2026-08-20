@@ -33,8 +33,6 @@ export function NoteCard({ note }: NoteCardProps) {
     e.preventDefault();
     if (isFree) {
       setIsDownloaded(true);
-      // Simulate download
-      alert(`Downloading "${note.title}". In production this streams from Supabase Storage bucket.`);
     } else {
       setIsPaymentModalOpen(true);
     }
@@ -156,7 +154,7 @@ export function NoteCard({ note }: NoteCardProps) {
           itemId={note.id}
           onSuccess={() => {
             setIsPaymentModalOpen(false);
-            alert(`Payment successful! Note "${note.title}" is now unlocked for download.`);
+            setIsDownloaded(true);
           }}
         />
       )}

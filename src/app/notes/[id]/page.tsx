@@ -111,7 +111,13 @@ export default function NoteDetailPage() {
       setIsPaymentModalOpen(true);
       return;
     }
-    alert(`Downloading "${note.title}" (${formatFileSize(note.file_size_bytes)})... File delivered!`);
+    // Stream or trigger file download
+    const link = document.createElement('a');
+    link.href = note.file_path || '#';
+    link.download = `${note.course_code}_${note.title}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const handleShare = () => {
@@ -472,7 +478,6 @@ export default function NoteDetailPage() {
         onSuccess={() => {
           setIsPaymentModalOpen(false);
           setIsUnlocked(true);
-          alert('Note successfully unlocked! Download available.');
         }}
       />
     </div>
