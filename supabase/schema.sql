@@ -68,6 +68,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     bio TEXT,
     wallet_balance NUMERIC(12, 2) DEFAULT 0.00 CHECK (wallet_balance >= 0),
     is_verified_writer BOOLEAN DEFAULT FALSE,
+    is_email_verified BOOLEAN DEFAULT FALSE,
     writer_skills TEXT[],
     writer_rating NUMERIC(3, 2) DEFAULT 5.00,
     total_reviews INT DEFAULT 0,
@@ -76,8 +77,9 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Ensure column exists if table was created previously
+-- Ensure columns exist
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS admin_permission admin_permission DEFAULT NULL;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS is_email_verified BOOLEAN DEFAULT FALSE;
 
 -- 3. Study Materials & Lesson Notes
 CREATE TABLE IF NOT EXISTS public.documents (
@@ -98,71 +100,74 @@ CREATE TABLE IF NOT EXISTS public.documents (
     page_count INT DEFAULT 1,
     price NUMERIC(10, 2) DEFAULT 0.00,
     downloads_count INT DEFAULT 0,
-    status doc_status DEFAULT 'APPROVED',
-    rating NUMERIC(3, 2) DEFAULT 5.00,
+    views_count INT DEFAULT 0,
+    status doc_status DEFAULT 'PENDING',
+    plagiarism_score NUMERIC(5, 2),
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 4. Document Purchases Table
+-- 4. Document Purchases & Royalties (90% Creator / 10% Platform)
 CREATE TABLE IF NOT EXISTS public.document_purchases (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     document_id UUID NOT NULL REFERENCES public.documents(id) ON DELETE CASCADE,
     buyer_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-    amount_paid NUMERIC(10, 2) NOT NULL,
-    gateway payment_gateway NOT NULL,
-    reference TEXT UNIQUE,
+    seller_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    price_paid NUMERIC(10, 2) NOT NULL,
+    creator_royalty NUMERIC(10, 2) NOT NULL,
+    platform_fee NUMERIC(10, 2) NOT NULL,
+    payment_reference TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 5. Assignment & Project Orders Table
+-- 5. Custom Escrow Orders (Assignment & Project Writing)
 CREATE TABLE IF NOT EXISTS public.orders (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    student_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    client_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
     writer_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
     title TEXT NOT NULL,
+    academic_level TEXT NOT NULL,
     service_type TEXT NOT NULL,
     subject_area TEXT NOT NULL,
-    academic_level TEXT NOT NULL,
-    pages_count INT DEFAULT 1,
-    word_count INT,
-    citation_style TEXT DEFAULT 'APA 7th',
+    topic TEXT NOT NULL,
+    instructions TEXT,
+    page_count INT DEFAULT 1,
+    budget NUMERIC(12, 2) NOT NULL,
+    writer_cut NUMERIC(12, 2) NOT NULL,
+    platform_commission NUMERIC(12, 2) NOT NULL,
     deadline TIMESTAMPTZ NOT NULL,
-    instructions TEXT NOT NULL,
-    attachment_paths TEXT[],
-    budget NUMERIC(10, 2) NOT NULL,
-    platform_fee NUMERIC(10, 2) DEFAULT 0.00,
     status order_status DEFAULT 'OPEN',
     escrow_status escrow_status DEFAULT 'UNPAID',
-    dispute_reason TEXT,
+    escrow_amount NUMERIC(12, 2) DEFAULT 0.00,
+    turnitin_required BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 6. Order Submissions / Deliverables
+-- 6. Order Submissions
 CREATE TABLE IF NOT EXISTS public.order_submissions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     order_id UUID NOT NULL REFERENCES public.orders(id) ON DELETE CASCADE,
     writer_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-    file_paths TEXT[] NOT NULL,
-    plagiarism_score NUMERIC(4, 2),
-    ai_score NUMERIC(4, 2),
-    notes TEXT,
-    version INT DEFAULT 1,
+    file_path TEXT NOT NULL,
+    turnitin_report_path TEXT,
+    similarity_score NUMERIC(5, 2),
+    ai_score NUMERIC(5, 2),
+    writer_notes TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 7. Real-time Order Chat Messages
+-- 7. Order Real-time Messages
 CREATE TABLE IF NOT EXISTS public.order_messages (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     order_id UUID NOT NULL REFERENCES public.orders(id) ON DELETE CASCADE,
     sender_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-    content TEXT NOT NULL,
-    attachment_url TEXT,
+    message TEXT NOT NULL,
+    attachment_path TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 8. Wallet Transactions Ledger
+-- 8. Platform Financial Transactions
 CREATE TABLE IF NOT EXISTS public.transactions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
@@ -202,19 +207,33 @@ CREATE TABLE IF NOT EXISTS public.reviews (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Auto Create Profile Trigger
+-- =========================================================
+-- Auto-Create & Auto-Sync Profile Trigger for Auth Users
+-- =========================================================
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
-    INSERT INTO public.profiles (id, email, full_name, role, avatar_url)
+    INSERT INTO public.profiles (id, email, full_name, role, avatar_url, is_email_verified)
     VALUES (
         NEW.id,
         NEW.email,
-        COALESCE(NEW.raw_user_meta_data->>'full_name', 'Student User'),
-        COALESCE((NEW.raw_user_meta_data->>'role')::user_role, 'STUDENT'),
-        NEW.raw_user_meta_data->>'avatar_url'
+        COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.raw_user_meta_data->>'name', split_part(NEW.email, '@', 1)),
+        CASE 
+            WHEN NEW.email = 'orukari878@gmail.com' THEN 'ADMIN'::user_role
+            WHEN NEW.raw_user_meta_data->>'role' = 'WRITER' THEN 'WRITER'::user_role
+            ELSE 'STUDENT'::user_role
+        END,
+        COALESCE(NEW.raw_user_meta_data->>'avatar_url', NEW.raw_user_meta_data->>'picture', null),
+        CASE
+            WHEN NEW.email = 'orukari878@gmail.com' THEN true
+            WHEN NEW.raw_user_meta_data->>'is_email_verified' = 'true' THEN true
+            ELSE false
+        END
     )
-    ON CONFLICT (id) DO NOTHING;
+    ON CONFLICT (id) DO UPDATE SET
+        email = EXCLUDED.email,
+        full_name = COALESCE(EXCLUDED.full_name, public.profiles.full_name),
+        avatar_url = COALESCE(EXCLUDED.avatar_url, public.profiles.avatar_url);
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -224,7 +243,9 @@ CREATE TRIGGER on_auth_user_created
     AFTER INSERT ON auth.users
     FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
--- Row Level Security (RLS)
+-- =========================================================
+-- Row Level Security (RLS) Policies
+-- =========================================================
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.documents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.document_purchases ENABLE ROW LEVEL SECURITY;
@@ -235,8 +256,32 @@ ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.payout_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.reviews ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Public profiles viewable by all" ON public.profiles;
 CREATE POLICY "Public profiles viewable by all" ON public.profiles FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Users can insert own profile" ON public.profiles;
+CREATE POLICY "Users can insert own profile" ON public.profiles FOR INSERT WITH CHECK (auth.uid() = id);
+
+DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
 CREATE POLICY "Users can update own profile" ON public.profiles FOR UPDATE USING (auth.uid() = id);
+
+DROP POLICY IF EXISTS "Approved documents viewable by all" ON public.documents;
 CREATE POLICY "Approved documents viewable by all" ON public.documents FOR SELECT USING (status = 'APPROVED' OR auth.uid() = uploader_id);
+
+DROP POLICY IF EXISTS "Authenticated users can upload documents" ON public.documents;
 CREATE POLICY "Authenticated users can upload documents" ON public.documents FOR INSERT WITH CHECK (auth.uid() = uploader_id);
+
+DROP POLICY IF EXISTS "Uploaders can update own documents" ON public.documents;
 CREATE POLICY "Uploaders can update own documents" ON public.documents FOR UPDATE USING (auth.uid() = uploader_id);
+
+DROP POLICY IF EXISTS "Users view own transactions" ON public.transactions;
+CREATE POLICY "Users view own transactions" ON public.transactions FOR SELECT USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users insert own transactions" ON public.transactions;
+CREATE POLICY "Users insert own transactions" ON public.transactions FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users view own orders" ON public.orders;
+CREATE POLICY "Users view own orders" ON public.orders FOR SELECT USING (auth.uid() = client_id OR auth.uid() = writer_id);
+
+DROP POLICY IF EXISTS "Users create orders" ON public.orders;
+CREATE POLICY "Users create orders" ON public.orders FOR INSERT WITH CHECK (auth.uid() = client_id);
