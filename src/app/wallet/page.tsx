@@ -12,29 +12,83 @@ import {
   CheckCircle2, 
   Sparkles,
   CreditCard,
-  Loader2
+  Loader2,
+  X,
+  AlertCircle,
+  Lock,
+  ArrowRight,
+  Receipt,
+  Copy,
+  Check
 } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import { PaymentModal } from '@/components/payments/PaymentModal';
 import { useAuth } from '@/context/AuthContext';
 import { createClient } from '@/lib/supabase/client';
 import { Transaction } from '@/types/database.types';
+
+const MIN_DEPOSIT = 1000;
+const MIN_WITHDRAWAL = 2000;
+const DEPOSIT_PRESETS = [2000, 5000, 10000, 25000, 50000];
+
+const NIGERIAN_BANKS = [
+  'Access Bank',
+  'Guaranty Trust Bank (GTB)',
+  'Zenith Bank',
+  'United Bank for Africa (UBA)',
+  'First Bank of Nigeria',
+  'Kuda Bank',
+  'Opay',
+  'Palmpay',
+  'Moniepoint',
+  'Stanbic IBTC Bank',
+  'FCMB',
+  'Fidelity Bank',
+  'Union Bank',
+  'Sterling Bank',
+  'Wema Bank / ALAT',
+  'Ecobank Nigeria',
+  'Jaiz Bank',
+  'Heritage Bank',
+  'Polaris Bank',
+  'Unity Bank',
+];
+
+interface SuccessReceiptData {
+  type: 'DEPOSIT' | 'WITHDRAWAL';
+  amount: number;
+  reference: string;
+  gateway?: string;
+  bankName?: string;
+  accountNumber?: string;
+  accountName?: string;
+  newBalance: number;
+  date: string;
+}
 
 export default function WalletPage() {
   const { user, refreshUser } = useAuth();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Deposit State
   const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
-  const [depositAmount, setDepositAmount] = useState('10000');
+  const [depositAmount, setDepositAmount] = useState<number>(5000);
+  const [customDepositInput, setCustomDepositInput] = useState<string>('5000');
+  const [depositGateway, setDepositGateway] = useState<'PAYSTACK' | 'FLUTTERWAVE'>('PAYSTACK');
+  const [isProcessingDeposit, setIsProcessingDeposit] = useState(false);
   
   // Withdrawal Form State
   const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false);
-  const [withdrawAmount, setWithdrawAmount] = useState('15000');
+  const [withdrawAmount, setWithdrawAmount] = useState<number>(5000);
+  const [customWithdrawInput, setCustomWithdrawInput] = useState<string>('5000');
   const [bankName, setBankName] = useState('Access Bank');
   const [accountNumber, setAccountNumber] = useState('');
   const [accountName, setAccountName] = useState('');
   const [isProcessingWithdraw, setIsProcessingWithdraw] = useState(false);
+
+  // Modern Success Receipt Modal State
+  const [successReceipt, setSuccessReceipt] = useState<SuccessReceiptData | null>(null);
+  const [copiedRef, setCopiedRef] = useState(false);
 
   const balance = Number(user?.wallet_balance) || 0;
 
@@ -66,45 +120,87 @@ export default function WalletPage() {
     loadTransactions();
   }, [user]);
 
-  const handleDepositSuccess = async ({ gateway, reference }: { gateway: string; reference: string }) => {
-    setIsDepositModalOpen(false);
-    const addedAmount = Number(depositAmount);
-    
+  // Handle Deposit Submit
+  const handleDeposit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const amount = Number(customDepositInput) || 0;
+
+    if (amount < MIN_DEPOSIT) {
+      alert(`Minimum deposit amount is ${formatCurrency(MIN_DEPOSIT)}.`);
+      return;
+    }
+
+    setIsProcessingDeposit(true);
+
     try {
+      const reference = `DEP_${Date.now()}`;
+      
+      // Simulate/Trigger API payment
+      await new Promise((resolve) => setTimeout(resolve, 1400));
+
       if (user) {
         const supabase = createClient();
         await supabase.from('transactions').insert({
           user_id: user.id,
-          amount: addedAmount,
+          amount: amount,
           fee: 0,
           type: 'WALLET_DEPOSIT',
-          gateway: gateway as any,
+          gateway: depositGateway,
           reference,
-          description: `Wallet deposit via ${gateway}`,
+          description: `Wallet deposit via ${depositGateway}`,
         });
+
+        // Update user balance in profiles
+        await supabase
+          .from('profiles')
+          .update({ wallet_balance: balance + amount })
+          .eq('id', user.id);
 
         await refreshUser();
       }
+
+      setIsDepositModalOpen(false);
+      setSuccessReceipt({
+        type: 'DEPOSIT',
+        amount,
+        reference,
+        gateway: depositGateway,
+        newBalance: balance + amount,
+        date: new Date().toISOString(),
+      });
+
     } catch (err) {
       console.error(err);
+    } finally {
+      setIsProcessingDeposit(false);
     }
-    alert(`Successfully deposited ${formatCurrency(addedAmount)} into your wallet!`);
   };
 
+  // Handle Withdrawal Submit
   const handleWithdraw = async (e: React.FormEvent) => {
     e.preventDefault();
-    const amount = Number(withdrawAmount);
+    const amount = Number(customWithdrawInput) || 0;
+
+    if (amount < MIN_WITHDRAWAL) {
+      alert(`Minimum withdrawal amount is ${formatCurrency(MIN_WITHDRAWAL)}.`);
+      return;
+    }
     if (amount > balance) {
       alert('Insufficient wallet balance.');
       return;
     }
-    if (amount < 2000) {
-      alert('Minimum withdrawal amount is ₦2,000.');
+    if (!accountNumber || accountNumber.length !== 10) {
+      alert('Please enter a valid 10-digit NUBAN account number.');
       return;
     }
 
     setIsProcessingWithdraw(true);
+
     try {
+      const reference = `WD_${Date.now()}`;
+      
+      await new Promise((resolve) => setTimeout(resolve, 1400));
+
       if (user) {
         const supabase = createClient();
         await supabase.from('transactions').insert({
@@ -112,19 +208,43 @@ export default function WalletPage() {
           amount: -amount,
           fee: 50,
           type: 'BANK_WITHDRAWAL',
-          reference: `WD_${Date.now()}`,
-          description: `Bank withdrawal to ${bankName} (${accountNumber})`,
+          reference,
+          description: `Bank payout to ${bankName} (${accountNumber})`,
         });
+
+        // Deduct from profile balance
+        await supabase
+          .from('profiles')
+          .update({ wallet_balance: Math.max(0, balance - amount) })
+          .eq('id', user.id);
 
         await refreshUser();
       }
 
       setIsWithdrawModalOpen(false);
-      alert(`Withdrawal request for ${formatCurrency(amount)} submitted! Funds will arrive in your ${bankName} account shortly.`);
+      setSuccessReceipt({
+        type: 'WITHDRAWAL',
+        amount,
+        reference,
+        bankName,
+        accountNumber,
+        accountName: accountName || user?.full_name || 'Account Holder',
+        newBalance: Math.max(0, balance - amount),
+        date: new Date().toISOString(),
+      });
+
     } catch (err) {
       console.error(err);
     } finally {
       setIsProcessingWithdraw(false);
+    }
+  };
+
+  const copyReference = (ref: string) => {
+    if (typeof window !== 'undefined') {
+      navigator.clipboard.writeText(ref);
+      setCopiedRef(true);
+      setTimeout(() => setCopiedRef(false), 2000);
     }
   };
 
@@ -178,7 +298,10 @@ export default function WalletPage() {
           {/* Action Buttons */}
           <div className="flex flex-wrap items-center gap-3 pt-2">
             <button
-              onClick={() => setIsDepositModalOpen(true)}
+              onClick={() => {
+                setCustomDepositInput('5000');
+                setIsDepositModalOpen(true);
+              }}
               className="flex-1 min-w-[140px] py-3.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs transition-all shadow-lg flex items-center justify-center gap-2"
             >
               <Plus className="w-4 h-4" />
@@ -186,7 +309,10 @@ export default function WalletPage() {
             </button>
 
             <button
-              onClick={() => setIsWithdrawModalOpen(true)}
+              onClick={() => {
+                setCustomWithdrawInput(Math.min(balance, 5000) >= MIN_WITHDRAWAL ? String(Math.min(balance, 5000)) : String(MIN_WITHDRAWAL));
+                setIsWithdrawModalOpen(true);
+              }}
               className="flex-1 min-w-[140px] py-3.5 px-4 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs border border-white/20 transition-all flex items-center justify-center gap-2"
             >
               <ArrowUpRight className="w-4 h-4" />
@@ -207,9 +333,19 @@ export default function WalletPage() {
             </p>
           </div>
 
-          <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-slate-600 space-y-1">
-            <p className="font-bold text-slate-800">Minimum Withdrawal:</p>
-            <p className="text-[11px]">₦2,000 with standard ₦50 NIP transfer fee.</p>
+          <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-slate-600 space-y-1.5">
+            <div className="flex justify-between">
+              <span className="text-slate-500">Minimum Deposit:</span>
+              <span className="font-bold text-slate-900">{formatCurrency(MIN_DEPOSIT)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-500">Minimum Withdrawal:</span>
+              <span className="font-bold text-slate-900">{formatCurrency(MIN_WITHDRAWAL)}</span>
+            </div>
+            <div className="flex justify-between text-[11px] text-slate-400 pt-1 border-t border-slate-200/60">
+              <span>Standard NIP Fee:</span>
+              <span>₦50 / payout</span>
+            </div>
           </div>
         </div>
 
@@ -269,84 +405,436 @@ export default function WalletPage() {
         </div>
       </div>
 
-      {/* Deposit Modal */}
-      <PaymentModal
-        isOpen={isDepositModalOpen}
-        onClose={() => setIsDepositModalOpen(false)}
-        title="Top Up In-App Wallet"
-        amount={Number(depositAmount) || 5000}
-        itemType="WALLET_TOPUP"
-        onSuccess={handleDepositSuccess}
-      />
+      {/* ========================================================================= */}
+      {/* 1. MODERN WALLET DEPOSIT MODAL */}
+      {/* ========================================================================= */}
+      {isDepositModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-md bg-white rounded-3xl p-6 sm:p-8 space-y-6 shadow-2xl border border-slate-100">
+            
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                  <Plus className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900">Fund Your Wallet</h3>
+                  <span className="text-[11px] text-slate-400">Instant credit for orders & notes</span>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsDepositModalOpen(false)}
+                className="p-2 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
 
-      {/* Withdrawal Modal */}
-      {isWithdrawModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
-          <div className="w-full max-w-md bg-white rounded-3xl p-6 space-y-5 shadow-2xl border border-slate-100">
-            <h3 className="text-lg font-black text-slate-900">Withdraw to Nigerian Bank</h3>
-            <form onSubmit={handleWithdraw} className="space-y-4">
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700">Amount to Withdraw (₦ NGN)</label>
-                <input
-                  type="number"
-                  min={2000}
-                  max={balance}
-                  required
-                  value={withdrawAmount}
-                  onChange={(e) => setWithdrawAmount(e.target.value)}
-                  className="w-full p-3 rounded-xl border border-slate-200 text-sm font-black outline-none"
-                />
+            <form onSubmit={handleDeposit} className="space-y-5">
+              
+              {/* Preset Chips */}
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    Select Quick Amount
+                  </label>
+                  <span className="text-[10px] text-emerald-700 font-extrabold bg-emerald-50 px-2 py-0.5 rounded-full">
+                    Min: {formatCurrency(MIN_DEPOSIT)}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  {DEPOSIT_PRESETS.map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setCustomDepositInput(String(preset))}
+                      className={`py-2 px-2 rounded-xl text-xs font-bold border transition-all ${
+                        Number(customDepositInput) === preset
+                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      {formatCurrency(preset)}
+                    </button>
+                  ))}
+                </div>
               </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700">Select Bank</label>
+              {/* Custom Input */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700 block">
+                  Or Input Desired Amount (₦ NGN)
+                </label>
+                <div className="relative">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-base">₦</span>
+                  <input
+                    type="number"
+                    min={MIN_DEPOSIT}
+                    step={100}
+                    required
+                    value={customDepositInput}
+                    onChange={(e) => setCustomDepositInput(e.target.value)}
+                    placeholder="e.g. 15000"
+                    className={`w-full pl-9 pr-4 py-3 rounded-xl border text-lg font-black text-slate-900 outline-none transition-all ${
+                      Number(customDepositInput) < MIN_DEPOSIT
+                        ? 'border-red-400 bg-red-50/20 focus:border-red-500'
+                        : 'border-slate-200 focus:border-emerald-500'
+                    }`}
+                  />
+                </div>
+                {Number(customDepositInput) < MIN_DEPOSIT && (
+                  <p className="text-[11px] text-red-600 font-semibold flex items-center gap-1 mt-1">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    Amount cannot be less than the required minimum of {formatCurrency(MIN_DEPOSIT)}.
+                  </p>
+                )}
+              </div>
+
+              {/* Gateway Selector */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
+                  Select Gateway
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setDepositGateway('PAYSTACK')}
+                    className={`p-3 rounded-2xl border-2 text-left transition-all ${
+                      depositGateway === 'PAYSTACK'
+                        ? 'border-emerald-600 bg-emerald-50/40 text-emerald-950 font-bold'
+                        : 'border-slate-200 text-slate-700 bg-white'
+                    }`}
+                  >
+                    <p className="text-xs">Paystack</p>
+                    <p className="text-[10px] text-slate-500 font-normal">Cards, Bank & USSD</p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setDepositGateway('FLUTTERWAVE')}
+                    className={`p-3 rounded-2xl border-2 text-left transition-all ${
+                      depositGateway === 'FLUTTERWAVE'
+                        ? 'border-emerald-600 bg-emerald-50/40 text-emerald-950 font-bold'
+                        : 'border-slate-200 text-slate-700 bg-white'
+                    }`}
+                  >
+                    <p className="text-xs">Flutterwave</p>
+                    <p className="text-[10px] text-slate-500 font-normal">Multi-currency</p>
+                  </button>
+                </div>
+              </div>
+
+              {/* Submit CTA */}
+              <button
+                type="submit"
+                disabled={isProcessingDeposit || Number(customDepositInput) < MIN_DEPOSIT}
+                className="w-full py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-lg shadow-emerald-600/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {isProcessingDeposit ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Processing Payment...
+                  </>
+                ) : (
+                  <>
+                    <Lock className="w-4 h-4" />
+                    Pay {formatCurrency(Number(customDepositInput) || MIN_DEPOSIT)} & Fund Wallet
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
+              </button>
+
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 2. MODERN WALLET WITHDRAWAL MODAL */}
+      {/* ========================================================================= */}
+      {isWithdrawModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-md bg-white rounded-3xl p-6 sm:p-8 space-y-6 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto">
+            
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-slate-100 text-slate-900 flex items-center justify-center">
+                  <ArrowUpRight className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900">Withdraw to Bank</h3>
+                  <span className="text-[11px] text-slate-400">Available Balance: {formatCurrency(balance)}</span>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsWithdrawModalOpen(false)}
+                className="p-2 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleWithdraw} className="space-y-4">
+              
+              {/* Quick Amount Chips */}
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    Quick Amount
+                  </label>
+                  <span className="text-[10px] text-slate-500 font-extrabold bg-slate-100 px-2 py-0.5 rounded-full">
+                    Min: {formatCurrency(MIN_WITHDRAWAL)}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCustomWithdrawInput('2000')}
+                    className="py-2 px-2 rounded-xl text-xs font-bold border bg-slate-50 text-slate-700 border-slate-200 hover:border-slate-300"
+                  >
+                    ₦2,000
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCustomWithdrawInput('5000')}
+                    className="py-2 px-2 rounded-xl text-xs font-bold border bg-slate-50 text-slate-700 border-slate-200 hover:border-slate-300"
+                  >
+                    ₦5,000
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCustomWithdrawInput(String(balance))}
+                    className="py-2 px-2 rounded-xl text-xs font-bold border bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100"
+                  >
+                    All (₦{balance})
+                  </button>
+                </div>
+              </div>
+
+              {/* Custom Input */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700 block">
+                  Withdrawal Amount (₦ NGN)
+                </label>
+                <div className="relative">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-base">₦</span>
+                  <input
+                    type="number"
+                    min={MIN_WITHDRAWAL}
+                    max={balance}
+                    step={100}
+                    required
+                    value={customWithdrawInput}
+                    onChange={(e) => setCustomWithdrawInput(e.target.value)}
+                    placeholder="e.g. 5000"
+                    className={`w-full pl-9 pr-4 py-3 rounded-xl border text-lg font-black text-slate-900 outline-none transition-all ${
+                      Number(customWithdrawInput) < MIN_WITHDRAWAL || Number(customWithdrawInput) > balance
+                        ? 'border-red-400 bg-red-50/20 focus:border-red-500'
+                        : 'border-slate-200 focus:border-emerald-500'
+                    }`}
+                  />
+                </div>
+                {Number(customWithdrawInput) < MIN_WITHDRAWAL && (
+                  <p className="text-[11px] text-red-600 font-semibold flex items-center gap-1">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    Minimum withdrawal amount is {formatCurrency(MIN_WITHDRAWAL)}.
+                  </p>
+                )}
+                {Number(customWithdrawInput) > balance && (
+                  <p className="text-[11px] text-red-600 font-semibold flex items-center gap-1">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    Amount exceeds your available balance of {formatCurrency(balance)}.
+                  </p>
+                )}
+              </div>
+
+              {/* Bank Selection */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700 block">Select Destination Bank</label>
                 <select
                   value={bankName}
                   onChange={(e) => setBankName(e.target.value)}
-                  className="w-full p-3 rounded-xl border border-slate-200 text-xs font-medium outline-none bg-white"
+                  className="w-full p-3 rounded-xl border border-slate-200 text-xs font-semibold outline-none bg-white focus:border-emerald-500"
                 >
-                  <option value="Access Bank">Access Bank</option>
-                  <option value="GTBank">Guaranty Trust Bank (GTB)</option>
-                  <option value="Zenith Bank">Zenith Bank</option>
-                  <option value="UBA">United Bank for Africa (UBA)</option>
-                  <option value="First Bank">First Bank of Nigeria</option>
-                  <option value="Kuda Bank">Kuda Bank</option>
-                  <option value="Opay">Opay</option>
-                  <option value="Palmpay">Palmpay</option>
-                  <option value="Moniepoint">Moniepoint</option>
+                  {NIGERIAN_BANKS.map((b) => (
+                    <option key={b} value={b}>{b}</option>
+                  ))}
                 </select>
               </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700">10-Digit Account Number</label>
+              {/* Account Number */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700 block">10-Digit NUBAN Account Number</label>
                 <input
                   type="text"
                   maxLength={10}
                   required
                   value={accountNumber}
-                  onChange={(e) => setAccountNumber(e.target.value)}
+                  onChange={(e) => setAccountNumber(e.target.value.replace(/\D/g, ''))}
                   placeholder="0123456789"
-                  className="w-full p-3 rounded-xl border border-slate-200 text-xs font-medium outline-none"
+                  className="w-full p-3 rounded-xl border border-slate-200 text-sm font-black tracking-wider text-slate-900 outline-none focus:border-emerald-500"
                 />
               </div>
 
+              {/* Account Name */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700 block">Account Holder Full Name</label>
+                <input
+                  type="text"
+                  value={accountName}
+                  onChange={(e) => setAccountName(e.target.value)}
+                  placeholder={user?.full_name || 'e.g. John Doe'}
+                  className="w-full p-3 rounded-xl border border-slate-200 text-xs font-semibold outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              {/* Fee Notice */}
+              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-slate-600 space-y-1">
+                <div className="flex justify-between">
+                  <span>Gross Payout:</span>
+                  <span className="font-bold text-slate-900">{formatCurrency(Number(customWithdrawInput) || 0)}</span>
+                </div>
+                <div className="flex justify-between text-slate-400">
+                  <span>NIP Transfer Fee:</span>
+                  <span>₦50</span>
+                </div>
+                <div className="flex justify-between font-bold text-emerald-700 pt-1 border-t border-slate-200/60">
+                  <span>Net Credited to Bank:</span>
+                  <span>{formatCurrency(Math.max(0, (Number(customWithdrawInput) || 0) - 50))}</span>
+                </div>
+              </div>
+
+              {/* Actions */}
               <div className="flex gap-2 pt-2">
                 <button
                   type="button"
                   onClick={() => setIsWithdrawModalOpen(false)}
-                  className="w-1/2 py-3 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold"
+                  className="w-1/3 py-3 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={isProcessingWithdraw}
-                  className="w-1/2 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md"
+                  disabled={
+                    isProcessingWithdraw || 
+                    Number(customWithdrawInput) < MIN_WITHDRAWAL || 
+                    Number(customWithdrawInput) > balance ||
+                    accountNumber.length !== 10
+                  }
+                  className="w-2/3 py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md disabled:opacity-50"
                 >
-                  {isProcessingWithdraw ? 'Processing...' : 'Confirm Payout'}
+                  {isProcessingWithdraw ? (
+                    <span className="flex items-center justify-center gap-1.5">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      Processing Payout...
+                    </span>
+                  ) : (
+                    `Withdraw ${formatCurrency(Number(customWithdrawInput) || 0)}`
+                  )}
                 </button>
               </div>
+
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 3. MODERN TRANSACTION SUCCESS RECEIPT MODAL */}
+      {/* ========================================================================= */}
+      {successReceipt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden text-center">
+            
+            {/* Top Glow & Animation */}
+            <div className={`p-8 pb-6 ${
+              successReceipt.type === 'DEPOSIT'
+                ? 'bg-gradient-to-b from-emerald-500/10 to-transparent'
+                : 'bg-gradient-to-b from-primary-500/10 to-transparent'
+            }`}>
+              <div className="w-18 h-18 rounded-3xl bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-inner border-2 border-emerald-200 animate-bounce">
+                <CheckCircle2 className="w-10 h-10" />
+              </div>
+              
+              <h3 className="text-xl font-black text-slate-900 mt-4">
+                {successReceipt.type === 'DEPOSIT' ? 'Wallet Funded Successfully!' : 'Payout Initiated Successfully!'}
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">
+                {successReceipt.type === 'DEPOSIT'
+                  ? 'Your in-app balance has been credited and is ready to use.'
+                  : 'Funds have been dispatched and will arrive in your bank account shortly.'}
+              </p>
+            </div>
+
+            {/* Receipt Details Card */}
+            <div className="px-6 sm:px-8 pb-6 space-y-4">
+              <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 text-left text-xs space-y-3">
+                
+                <div className="flex justify-between items-center pb-2 border-b border-slate-200/60">
+                  <span className="text-slate-400 font-bold uppercase text-[10px]">Transaction Type</span>
+                  <span className="font-extrabold text-slate-800">
+                    {successReceipt.type === 'DEPOSIT' ? 'Wallet Deposit' : 'Bank Withdrawal'}
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500">Amount:</span>
+                  <span className="text-base font-black text-slate-900">
+                    {formatCurrency(successReceipt.amount)}
+                  </span>
+                </div>
+
+                {successReceipt.gateway && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500">Gateway:</span>
+                    <span className="font-bold text-slate-800">{successReceipt.gateway}</span>
+                  </div>
+                )}
+
+                {successReceipt.bankName && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500">Destination Bank:</span>
+                    <span className="font-bold text-slate-800">{successReceipt.bankName}</span>
+                  </div>
+                )}
+
+                {successReceipt.accountNumber && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500">Account Number:</span>
+                    <span className="font-mono font-bold text-slate-800">{successReceipt.accountNumber}</span>
+                  </div>
+                )}
+
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500">Reference:</span>
+                  <button
+                    onClick={() => copyReference(successReceipt.reference)}
+                    className="font-mono font-bold text-slate-700 flex items-center gap-1 hover:text-slate-900"
+                  >
+                    <span>{successReceipt.reference}</span>
+                    {copiedRef ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3 text-slate-400" />}
+                  </button>
+                </div>
+
+                <div className="flex justify-between items-center pt-2 border-t border-slate-200/60 font-bold">
+                  <span className="text-slate-600">Updated Balance:</span>
+                  <span className="text-emerald-700 font-black">{formatCurrency(successReceipt.newBalance)}</span>
+                </div>
+
+              </div>
+
+              {/* Dismiss CTA */}
+              <button
+                onClick={() => setSuccessReceipt(null)}
+                className="w-full py-3.5 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-md transition-all flex items-center justify-center gap-2"
+              >
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                Done • Return to Wallet
+              </button>
+            </div>
+
           </div>
         </div>
       )}
