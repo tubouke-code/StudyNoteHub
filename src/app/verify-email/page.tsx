@@ -54,7 +54,12 @@ function VerifyEmailContent() {
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!otpCode.trim() || !email) {
-      setErrorMessage('Please enter the 6-digit verification code sent to your email.');
+      setErrorMessage('Please enter the verification code sent to your email.');
+      return;
+    }
+
+    if (otpCode.trim().length < 6) {
+      setErrorMessage('Please enter the complete verification code (6 to 8 digits).');
       return;
     }
 
@@ -65,7 +70,7 @@ function VerifyEmailContent() {
     try {
       const supabase = createClient();
       
-      // Verify the OTP with Supabase
+      // 1. Try verify with 'email' (Magic Link OTP)
       const { data, error } = await supabase.auth.verifyOtp({
         email: email.trim().toLowerCase(),
         token: otpCode.trim(),
@@ -73,7 +78,7 @@ function VerifyEmailContent() {
       });
 
       if (error) {
-        // Also try 'signup' token type if 'email' fails
+        // 2. Try with 'signup' token type
         const { data: signupData, error: signupError } = await supabase.auth.verifyOtp({
           email: email.trim().toLowerCase(),
           token: otpCode.trim(),
@@ -81,7 +86,16 @@ function VerifyEmailContent() {
         });
 
         if (signupError) {
-          throw new Error(signupError.message || error.message);
+          // 3. Try with 'magiclink' token type
+          const { data: magicData, error: magicError } = await supabase.auth.verifyOtp({
+            email: email.trim().toLowerCase(),
+            token: otpCode.trim(),
+            type: 'magiclink' as any,
+          });
+
+          if (magicError) {
+            throw new Error(magicError.message || signupError.message || error.message);
+          }
         }
       }
 
@@ -114,7 +128,7 @@ function VerifyEmailContent() {
       }, 1500);
 
     } catch (err: any) {
-      setErrorMessage(err.message || 'Invalid or expired verification code. Please request a new code.');
+      setErrorMessage(err.message || 'Invalid or expired verification code. Please request a fresh code.');
     } finally {
       setIsLoading(false);
     }
@@ -146,7 +160,7 @@ function VerifyEmailContent() {
         if (resendError) throw resendError;
       }
 
-      setSuccessMessage('A fresh verification link and code have been sent to your inbox!');
+      setSuccessMessage('A fresh verification code and link have been sent to your inbox!');
       setCountdown(60);
     } catch (err: any) {
       setErrorMessage(err.message || 'Failed to resend verification email. Please wait a moment.');
@@ -194,8 +208,8 @@ function VerifyEmailContent() {
             <Sparkles className="w-3.5 h-3.5 text-indigo-600" /> 2 Easy Ways to Verify:
           </p>
           <div className="space-y-1 text-[11px] text-indigo-800">
-            <p><strong>1. Click the Button in Email:</strong> Open your email app and click <em>"Verify My Email"</em> to log in automatically.</p>
-            <p><strong>2. Or Enter 6-Digit Code:</strong> Enter the code below if provided in the email.</p>
+            <p><strong>1. Click the Button in Email:</strong> Open your email app and click <em>"Verify Email"</em> to log in automatically.</p>
+            <p><strong>2. Or Enter Code Below:</strong> Enter your verification code (6 to 8 digits).</p>
           </div>
         </div>
 
@@ -218,16 +232,16 @@ function VerifyEmailContent() {
         <form onSubmit={handleVerifyOtp} className="space-y-4">
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-slate-700 block">
-              Enter 6-Digit Verification Code (Optional)
+              Enter Verification Code (6 to 8 Digits)
             </label>
             <div className="relative">
               <KeyRound className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
-                maxLength={6}
+                maxLength={8}
                 value={otpCode}
                 onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
-                placeholder="123456"
+                placeholder="12345678"
                 className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 text-center text-lg font-black tracking-widest text-slate-900 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100"
               />
             </div>
