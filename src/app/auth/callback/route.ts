@@ -42,18 +42,41 @@ export async function GET(request: Request) {
     if (!error && data?.user) {
       const userEmail = data.user.email?.toLowerCase() || '';
 
-      // Super Admin
+      // Super Admin bypasses verification
       if (userEmail === 'orukari878@gmail.com') {
         return NextResponse.redirect(`${origin}/admin`);
       }
 
-      // Query role from profiles table
+      // Query profile from database
       const { data: profile } = await supabase
         .from('profiles')
-        .select('role, admin_permission')
+        .select('role, admin_permission, is_email_verified')
         .eq('id', data.user.id)
         .single();
 
+      // Check if user has verified their email
+      const isEmailVerified = profile?.is_email_verified;
+
+      if (!isEmailVerified) {
+        // Trigger verification OTP to the user's email
+        try {
+          await supabase.auth.signInWithOtp({
+            email: userEmail,
+            options: {
+              shouldCreateUser: false,
+            },
+          });
+        } catch (e) {
+          console.error('Error sending OTP during Google callback:', e);
+        }
+
+        // Redirect to email verification screen
+        return NextResponse.redirect(
+          `${origin}/verify-email?email=${encodeURIComponent(userEmail)}&provider=google`
+        );
+      }
+
+      // If already verified, route according to role
       if (profile?.role === 'ADMIN' && profile?.admin_permission) {
         return NextResponse.redirect(`${origin}/admin`);
       } else if (profile?.role === 'WRITER' || data.user.user_metadata?.role === 'WRITER') {

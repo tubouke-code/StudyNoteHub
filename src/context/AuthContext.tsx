@@ -78,6 +78,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           bio: profile?.bio,
           wallet_balance: Number(profile?.wallet_balance) || 0,
           is_verified_writer: Boolean(profile?.is_verified_writer) || role === 'ADMIN',
+          is_email_verified: Boolean(profile?.is_email_verified) || email === 'orukari878@gmail.com',
           writer_skills: profile?.writer_skills || [],
           writer_rating: profile?.writer_rating || 5.0,
           total_reviews: profile?.total_reviews || 0,

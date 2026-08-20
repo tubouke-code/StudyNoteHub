@@ -65,15 +65,19 @@ function LoginContent() {
       await refreshUser();
 
       let detectedRole: 'ADMIN' | 'WRITER' | 'STUDENT' = 'STUDENT';
+      let isVerified = false;
 
       if (cleanEmail === 'orukari878@gmail.com') {
         detectedRole = 'ADMIN';
+        isVerified = true;
       } else {
         const { data: profile } = await supabase
           .from('profiles')
-          .select('role, admin_permission')
+          .select('role, admin_permission, is_email_verified')
           .eq('email', cleanEmail)
           .single();
+
+        isVerified = Boolean(profile?.is_email_verified);
 
         if (profile?.role === 'ADMIN' || profile?.admin_permission) {
           detectedRole = 'ADMIN';
@@ -82,6 +86,11 @@ function LoginContent() {
         } else {
           detectedRole = 'STUDENT';
         }
+      }
+
+      if (!isVerified) {
+        router.push(`/verify-email?email=${encodeURIComponent(cleanEmail)}`);
+        return;
       }
 
       if (redirectUrl) {

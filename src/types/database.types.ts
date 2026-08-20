@@ -29,6 +29,7 @@ export interface Profile {
   bio?: string;
   wallet_balance: number;
   is_verified_writer: boolean;
+  is_email_verified?: boolean;
   writer_skills?: string[];
   writer_rating?: number;
   total_reviews?: number;
