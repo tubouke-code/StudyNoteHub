@@ -47,13 +47,23 @@ export default function AdminPortalPage() {
         const supabase = createClient();
 
         // 1. Pending Notes for Moderation
-        const { data: notes } = await supabase
+        const { data: notes, error: notesErr } = await supabase
           .from('documents')
           .select('*, uploader:profiles(*)')
           .eq('status', 'PENDING')
           .order('created_at', { ascending: false });
 
-        if (notes) setPendingNotes(notes as DocumentItem[]);
+        if (notes) {
+          setPendingNotes(notes as DocumentItem[]);
+        } else if (notesErr) {
+          console.warn('Retrying document fetch without join:', notesErr);
+          const { data: rawNotes } = await supabase
+            .from('documents')
+            .select('*')
+            .eq('status', 'PENDING')
+            .order('created_at', { ascending: false });
+          if (rawNotes) setPendingNotes(rawNotes as DocumentItem[]);
+        }
 
         // 2. Writer profiles
         const { data: writers } = await supabase

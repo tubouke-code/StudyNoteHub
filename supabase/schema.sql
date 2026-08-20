@@ -256,32 +256,80 @@ ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.payout_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.reviews ENABLE ROW LEVEL SECURITY;
 
+-- Helper function to check if current user is Admin
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS BOOLEAN AS $$
+BEGIN
+    RETURN (
+        auth.jwt()->>'email' = 'orukari878@gmail.com'
+        OR EXISTS (
+            SELECT 1 FROM public.profiles 
+            WHERE id = auth.uid() AND role = 'ADMIN'
+        )
+    );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Profiles Policies
 DROP POLICY IF EXISTS "Public profiles viewable by all" ON public.profiles;
 CREATE POLICY "Public profiles viewable by all" ON public.profiles FOR SELECT USING (true);
 
 DROP POLICY IF EXISTS "Users can insert own profile" ON public.profiles;
-CREATE POLICY "Users can insert own profile" ON public.profiles FOR INSERT WITH CHECK (auth.uid() = id);
+CREATE POLICY "Users can insert own profile" ON public.profiles FOR INSERT WITH CHECK (auth.uid() = id OR public.is_admin());
 
 DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
-CREATE POLICY "Users can update own profile" ON public.profiles FOR UPDATE USING (auth.uid() = id);
+CREATE POLICY "Users can update own profile" ON public.profiles FOR UPDATE USING (auth.uid() = id OR public.is_admin());
 
+-- Documents Policies
 DROP POLICY IF EXISTS "Approved documents viewable by all" ON public.documents;
-CREATE POLICY "Approved documents viewable by all" ON public.documents FOR SELECT USING (status = 'APPROVED' OR auth.uid() = uploader_id);
+DROP POLICY IF EXISTS "Documents viewable by users and admins" ON public.documents;
+CREATE POLICY "Documents viewable by users and admins" ON public.documents FOR SELECT 
+    USING (status = 'APPROVED' OR auth.uid() = uploader_id OR public.is_admin());
 
 DROP POLICY IF EXISTS "Authenticated users can upload documents" ON public.documents;
-CREATE POLICY "Authenticated users can upload documents" ON public.documents FOR INSERT WITH CHECK (auth.uid() = uploader_id);
+CREATE POLICY "Authenticated users can upload documents" ON public.documents FOR INSERT 
+    WITH CHECK (auth.uid() = uploader_id OR public.is_admin());
 
 DROP POLICY IF EXISTS "Uploaders can update own documents" ON public.documents;
-CREATE POLICY "Uploaders can update own documents" ON public.documents FOR UPDATE USING (auth.uid() = uploader_id);
+DROP POLICY IF EXISTS "Uploaders and admins can update documents" ON public.documents;
+CREATE POLICY "Uploaders and admins can update documents" ON public.documents FOR UPDATE 
+    USING (auth.uid() = uploader_id OR public.is_admin());
 
+DROP POLICY IF EXISTS "Uploaders and admins can delete documents" ON public.documents;
+CREATE POLICY "Uploaders and admins can delete documents" ON public.documents FOR DELETE 
+    USING (auth.uid() = uploader_id OR public.is_admin());
+
+-- Transactions Policies
 DROP POLICY IF EXISTS "Users view own transactions" ON public.transactions;
-CREATE POLICY "Users view own transactions" ON public.transactions FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users view own transactions" ON public.transactions FOR SELECT 
+    USING (auth.uid() = user_id OR public.is_admin());
 
 DROP POLICY IF EXISTS "Users insert own transactions" ON public.transactions;
-CREATE POLICY "Users insert own transactions" ON public.transactions FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users insert own transactions" ON public.transactions FOR INSERT 
+    WITH CHECK (auth.uid() = user_id OR public.is_admin());
 
+-- Orders Policies
 DROP POLICY IF EXISTS "Users view own orders" ON public.orders;
-CREATE POLICY "Users view own orders" ON public.orders FOR SELECT USING (auth.uid() = client_id OR auth.uid() = writer_id);
+CREATE POLICY "Users view own orders" ON public.orders FOR SELECT 
+    USING (auth.uid() = client_id OR auth.uid() = writer_id OR public.is_admin());
 
 DROP POLICY IF EXISTS "Users create orders" ON public.orders;
-CREATE POLICY "Users create orders" ON public.orders FOR INSERT WITH CHECK (auth.uid() = client_id);
+CREATE POLICY "Users create orders" ON public.orders FOR INSERT 
+    WITH CHECK (auth.uid() = client_id OR public.is_admin());
+
+DROP POLICY IF EXISTS "Users and admins update orders" ON public.orders;
+CREATE POLICY "Users and admins update orders" ON public.orders FOR UPDATE 
+    USING (auth.uid() = client_id OR auth.uid() = writer_id OR public.is_admin());
+
+-- Payout Requests Policies
+DROP POLICY IF EXISTS "Users view own payouts" ON public.payout_requests;
+CREATE POLICY "Users view own payouts" ON public.payout_requests FOR SELECT 
+    USING (auth.uid() = writer_id OR public.is_admin());
+
+DROP POLICY IF EXISTS "Writers create payouts" ON public.payout_requests;
+CREATE POLICY "Writers create payouts" ON public.payout_requests FOR INSERT 
+    WITH CHECK (auth.uid() = writer_id OR public.is_admin());
+
+DROP POLICY IF EXISTS "Admins update payouts" ON public.payout_requests;
+CREATE POLICY "Admins update payouts" ON public.payout_requests FOR UPDATE 
+    USING (public.is_admin());

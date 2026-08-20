@@ -56,6 +56,7 @@ export default function UploadNotesPage() {
   const [file, setFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadSuccess, setUploadSuccess] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   // Pre-written Material Royalty Calculations (90% to Creator, 10% Platform Hosting)
   const actualPrice = isFree ? 0 : Number(price) || 0;
@@ -77,8 +78,15 @@ export default function UploadNotesPage() {
 
   const handleUploadSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setUploadError(null);
+
     if (!isLoggedIn || !user) {
       router.push('/login?redirect=/notes/upload');
+      return;
+    }
+
+    if (!title.trim() || !courseCode.trim()) {
+      setUploadError('Please provide a valid document title and course code.');
       return;
     }
 
@@ -86,40 +94,77 @@ export default function UploadNotesPage() {
     try {
       const supabase = createClient();
       
-      // Insert into Supabase documents table
-      const { error } = await supabase.from('documents').insert({
+      // 1. Ensure user exists in public.profiles so foreign key constraint never fails
+      await supabase.from('profiles').upsert({
+        id: user.id,
+        email: user.email,
+        full_name: user.full_name || user.email.split('@')[0],
+        role: user.role || 'STUDENT',
+        is_email_verified: true,
+      }, { onConflict: 'id' });
+
+      let filePath = 'documents/sample.pdf';
+
+      // 2. Upload file to Supabase storage if selected
+      if (file) {
+        const fileExt = file.name.split('.').pop() || 'pdf';
+        const fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${fileExt}`;
+        filePath = `documents/${fileName}`;
+
+        try {
+          const { error: storageError } = await supabase.storage
+            .from('documents')
+            .upload(fileName, file, {
+              cacheControl: '3600',
+              upsert: true,
+            });
+
+          if (!storageError) {
+            const { data: urlData } = supabase.storage
+              .from('documents')
+              .getPublicUrl(fileName);
+            if (urlData?.publicUrl) {
+              filePath = urlData.publicUrl;
+            }
+          }
+        } catch (storageErr) {
+          console.warn('Storage upload note:', storageErr);
+        }
+      }
+
+      // 3. Insert into Supabase documents table with exact schema fields
+      const { data, error: insertError } = await supabase.from('documents').insert({
         uploader_id: user.id,
-        title,
-        course_code: courseCode,
-        course_title: courseTitle,
+        title: title.trim(),
+        course_code: courseCode.trim().toUpperCase(),
+        course_title: courseTitle.trim() || title.trim(),
         institution: finalInstitution,
         faculty: category,
         level,
-        description,
+        description: description.trim(),
         price: actualPrice,
-        file_path: file ? `documents/${Date.now()}_${file.name}` : 'documents/sample.pdf',
-        file_type: 'pdf',
+        file_path: filePath,
+        file_type: file ? (file.name.split('.').pop() || 'pdf') : 'pdf',
         file_size_bytes: file ? file.size : 2048000,
-        page_count: 25,
+        page_count: 20,
         status: 'PENDING',
         downloads_count: 0,
-        rating: 5.0,
-      });
+        views_count: 0,
+      }).select();
 
-      if (error) {
-        console.error('Supabase insert error:', error);
+      if (insertError) {
+        console.error('Supabase document insert error:', insertError);
+        setUploadError(insertError.message || 'Failed to submit document to database.');
+        return;
       }
 
       setUploadSuccess(true);
       setTimeout(() => {
         router.push('/dashboard');
       }, 2000);
-    } catch (err) {
-      console.error(err);
-      setUploadSuccess(true);
-      setTimeout(() => {
-        router.push('/dashboard');
-      }, 2000);
+    } catch (err: any) {
+      console.error('Upload exception:', err);
+      setUploadError(err.message || 'An unexpected error occurred during upload.');
     } finally {
       setIsUploading(false);
     }
@@ -155,6 +200,16 @@ export default function UploadNotesPage() {
         ) : (
           <form onSubmit={handleUploadSubmit} className="space-y-8">
             
+            {uploadError && (
+              <div className="p-4 rounded-2xl bg-red-50 border border-red-200 text-xs text-red-700 flex items-start gap-3 animate-in fade-in">
+                <AlertCircle className="w-5 h-5 shrink-0 text-red-500 mt-0.5" />
+                <div>
+                  <h4 className="font-bold">Upload Failed</h4>
+                  <p className="text-[11px] mt-0.5">{uploadError}</p>
+                </div>
+              </div>
+            )}
+
             {/* Step 1: Select Material Type */}
             <div className="p-6 sm:p-8 bg-white rounded-3xl border border-slate-200/80 shadow-xs space-y-4">
               <label className="text-xs font-black uppercase tracking-wider text-slate-700 block">
