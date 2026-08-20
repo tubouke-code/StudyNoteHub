@@ -23,6 +23,7 @@ import {
 import { formatCurrency } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { PaymentModal } from '@/components/payments/PaymentModal';
+import { createClient } from '@/lib/supabase/client';
 
 // Each service has its own distinct complexity multiplier
 const SERVICE_TYPES = [
@@ -91,6 +92,7 @@ function OrderWizardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const preselectedService = searchParams.get('service');
+  const assignedWriterId = searchParams.get('writer_id');
   const { user, isLoggedIn } = useAuth();
 
   const [serviceType, setServiceType] = useState(
@@ -118,153 +120,193 @@ function OrderWizardContent() {
   const unitCount = isSlideService ? slidesCount : pagesCount;
   
   // Specific Rate per unit for this exact service and level
-  const effectiveRatePerUnit = Math.round(
-    (isSlideService ? 1000 : selectedLevelObj.rate) * selectedServiceObj.multiplier
-  );
+  const effectiveBaseRate = isSlideService 
+    ? 1000 
+    : Math.round(selectedLevelObj.rate * selectedServiceObj.multiplier);
 
-  const rawCost = unitCount * effectiveRatePerUnit;
-  const speakerNotesFee = isSlideService && includeSpeakerNotes ? slidesCount * 300 : 0;
-  
-  const subtotalBeforeRush = rawCost + speakerNotesFee;
-  const totalBudget = Math.round(subtotalBeforeRush * selectedUrgencyObj.multiplier);
-  
-  // Escrow & Commission Breakdown (15% Platform Commission)
-  const platformFee = Math.round(totalBudget * 0.15);
-  const writerEarnings = totalBudget - platformFee;
+  // Additional speaker notes add-on for slides (+₦300/slide)
+  const speakerNotesFee = (isSlideService && includeSpeakerNotes) ? slidesCount * 300 : 0;
 
-  const handleProceedToEscrow = (e: React.FormEvent) => {
+  // Base raw subtotal
+  const rawSubtotal = (unitCount * effectiveBaseRate) + speakerNotesFee;
+
+  // Urgency multiplier
+  const totalBudget = Math.round(rawSubtotal * selectedUrgencyObj.multiplier);
+  const urgencyFee = totalBudget - rawSubtotal;
+
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!isLoggedIn) {
-      router.push(`/login?redirect=/hire-writer/new`);
+      router.push('/login?redirect=/hire-writer/new');
       return;
     }
     setShowPaymentModal(true);
   };
 
+  const handlePaymentSuccess = async () => {
+    setShowPaymentModal(false);
+    try {
+      if (user) {
+        const supabase = createClient();
+        const { data: newOrder } = await supabase.from('orders').insert({
+          client_id: user.id,
+          writer_id: assignedWriterId || null,
+          title: title || `${selectedServiceObj.name} Project`,
+          service_type: selectedServiceObj.name,
+          subject_area: subjectArea || 'General Academic',
+          academic_level: selectedLevelObj.name,
+          pages_count: unitCount,
+          word_count: isSlideService ? 0 : unitCount * 275,
+          deadline: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(),
+          citation_style: citationStyle,
+          instructions: instructions || 'Standard academic guidelines and research.',
+          budget: totalBudget,
+          escrow_status: 'HELD_IN_ESCROW',
+          status: 'PENDING',
+        }).select().single();
+
+        if (newOrder) {
+          router.push(`/hire-writer/orders/${newOrder.id}`);
+          return;
+        }
+      }
+    } catch (err) {
+      console.error('Error creating order in Supabase:', err);
+    }
+    router.push('/dashboard');
+  };
+
   return (
-    <div className="min-h-screen bg-slate-50/50 py-8 sm:py-12">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
+      
+      {/* Header */}
+      <div className="text-center space-y-2 max-w-2xl mx-auto">
+        <span className="text-[11px] font-extrabold uppercase tracking-widest text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">
+          Escrow Protected Order
+        </span>
+        <h1 className="text-2xl sm:text-4xl font-black text-slate-900">
+          Commission a Custom Academic Project
+        </h1>
+        <p className="text-xs sm:text-sm text-slate-500">
+          Transparent per-page & per-slide rates. Your money stays locked safely in escrow until you approve the Turnitin report.
+        </p>
+      </div>
+
+      <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         
-        {/* Header */}
-        <div className="text-center space-y-2 max-w-2xl mx-auto">
-          <span className="text-[11px] font-extrabold uppercase tracking-widest text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-100">
-            Escrow Protected Order
-          </span>
-          <h1 className="text-2xl sm:text-3xl font-black text-slate-900">
-            Order Custom Academic Work or Slide Deck
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-500">
-            Dynamic service rates: ₦1,000 (Undergraduate), ₦2,000 (Postgraduate), ₦3,000 (Doctorate) scaled by project complexity.
-          </p>
-        </div>
-
-        <form onSubmit={handleProceedToEscrow} className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Left 2 Cols: Form Options */}
+        <div className="lg:col-span-2 space-y-6">
           
-          {/* Left Columns: Wizard Configuration */}
-          <div className="lg:col-span-2 space-y-6">
-            
-            {/* Step 1: Service Type with distinct price tags */}
-            <div className="p-6 bg-white rounded-3xl border border-slate-200/80 shadow-xs space-y-3">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-black uppercase tracking-wider text-slate-700">
-                  1. Select Academic Service Type
-                </label>
-                <span className="text-[10px] font-bold text-slate-400">Prices adapt per service complexity</span>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {SERVICE_TYPES.map((service) => {
-                  const serviceSpecificRate = Math.round(
-                    (service.id === 'slides' ? 1000 : selectedLevelObj.rate) * service.multiplier
-                  );
-
-                  return (
-                    <button
-                      key={service.id}
-                      type="button"
-                      onClick={() => setServiceType(service.id)}
-                      className={`p-4 rounded-2xl border-2 text-left transition-all flex flex-col justify-between space-y-2 ${
-                        serviceType === service.id
-                          ? 'border-emerald-600 bg-emerald-50/70 text-emerald-950 shadow-xs'
-                          : 'border-slate-200 hover:border-slate-300 text-slate-700 bg-white'
-                      }`}
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xl">{service.icon}</span>
-                          <span className="text-xs font-black leading-snug">{service.name}</span>
-                        </div>
-                        {serviceType === service.id && (
-                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                        )}
-                      </div>
-
-                      <p className="text-[11px] text-slate-500 line-clamp-1">{service.desc}</p>
-
-                      <div className="pt-1 border-t border-slate-100 flex items-center justify-between">
-                        <span className="text-[10px] text-slate-400 font-bold uppercase">Effective Rate:</span>
-                        <span className="text-xs font-black text-emerald-700">
-                          {formatCurrency(serviceSpecificRate)} <span className="text-[10px] font-normal text-slate-500">/ {service.isSlide ? 'slide' : 'page'}</span>
-                        </span>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
+          {/* 1. Academic Service Selection */}
+          <div className="p-6 sm:p-8 bg-white rounded-3xl border border-slate-200/80 shadow-xs space-y-4">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-black uppercase tracking-wider text-slate-700">
+                1. Select Academic Service
+              </label>
+              <span className="text-[11px] font-bold text-emerald-700">
+                {isSlideService ? 'Slide-based' : 'Page-based'}
+              </span>
             </div>
 
-            {/* Step 2: Academic Level & Scope */}
-            <div className="p-6 bg-white rounded-3xl border border-slate-200/80 shadow-xs space-y-4">
-              <label className="text-xs font-black uppercase tracking-wider text-slate-700 block">
-                2. Academic Level & Base Rates
-              </label>
-              
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                {ACADEMIC_LEVELS.map((level) => (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {SERVICE_TYPES.map((srv) => {
+                const serviceUnitRate = srv.isSlide 
+                  ? 1000 
+                  : Math.round(selectedLevelObj.rate * srv.multiplier);
+
+                return (
                   <button
-                    key={level.id}
+                    key={srv.id}
                     type="button"
-                    onClick={() => setAcademicLevel(level.id)}
-                    className={`p-3.5 rounded-2xl border-2 text-center transition-all ${
-                      academicLevel === level.id
-                        ? 'border-emerald-600 bg-emerald-50/70 text-emerald-950 font-bold shadow-xs'
-                        : 'border-slate-200 hover:border-slate-300 text-slate-700 text-xs'
+                    onClick={() => setServiceType(srv.id)}
+                    className={`p-4 rounded-2xl border-2 text-left transition-all flex flex-col justify-between ${
+                      serviceType === srv.id
+                        ? 'border-emerald-600 bg-emerald-50/40 text-emerald-950 shadow-xs'
+                        : 'border-slate-200 hover:border-slate-300 text-slate-700 bg-white'
                     }`}
                   >
-                    <span className="block text-xs font-black">{level.name.split('(')[0]}</span>
-                    <span className="text-sm font-black text-emerald-700 block mt-0.5">
-                      {formatCurrency(level.rate)}<span className="text-[10px] font-normal text-slate-500"> / pg</span>
-                    </span>
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="text-2xl">{srv.icon}</span>
+                      <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                        {formatCurrency(serviceUnitRate)}/{srv.isSlide ? 'slide' : 'pg'}
+                      </span>
+                    </div>
+
+                    <div className="mt-2">
+                      <h4 className="text-xs font-bold leading-tight">{srv.name}</h4>
+                      <p className="text-[11px] text-slate-500 mt-1">{srv.desc}</p>
+                    </div>
+
+                    {serviceType === srv.id && (
+                      <div className="mt-2 pt-2 border-t border-emerald-200/60 flex items-center gap-1 text-[11px] font-bold text-emerald-700">
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Selected
+                      </div>
+                    )}
                   </button>
-                ))}
-              </div>
+                );
+              })}
+            </div>
+          </div>
 
-              {/* Slider: Page Count or Slide Count */}
-              <div className="pt-2">
-                <div className="flex justify-between items-center mb-1">
-                  <span className="text-xs font-bold text-slate-700">
-                    {isSlideService ? 'Number of Slides (PowerPoint):' : 'Number of Pages (Double-Spaced):'}
-                  </span>
-                  <span className="text-base font-black text-emerald-700">
-                    {isSlideService ? `${slidesCount} Slides` : `${pagesCount} Pages (~${pagesCount * 275} words)`}
-                  </span>
+          {/* 2. Academic Level & Base Rate */}
+          <div className="p-6 sm:p-8 bg-white rounded-3xl border border-slate-200/80 shadow-xs space-y-4">
+            <label className="text-xs font-black uppercase tracking-wider text-slate-700 block">
+              2. Academic Level
+            </label>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {ACADEMIC_LEVELS.map((lvl) => (
+                <button
+                  key={lvl.id}
+                  type="button"
+                  onClick={() => setAcademicLevel(lvl.id)}
+                  className={`p-4 rounded-2xl border-2 text-left transition-all ${
+                    academicLevel === lvl.id
+                      ? 'border-emerald-600 bg-emerald-50/40 text-emerald-950 shadow-xs'
+                      : 'border-slate-200 hover:border-slate-300 text-slate-700 bg-white'
+                  }`}
+                >
+                  <p className="text-xs font-bold">{lvl.name}</p>
+                  <p className="text-sm font-black text-slate-900 mt-1">
+                    {formatCurrency(lvl.rate)} <span className="text-[10px] font-normal text-slate-500">/ base pg</span>
+                  </p>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 3. Project Volume & Settings */}
+          <div className="p-6 sm:p-8 bg-white rounded-3xl border border-slate-200/80 shadow-xs space-y-6">
+            <label className="text-xs font-black uppercase tracking-wider text-slate-700 block">
+              3. Project Scope & Specifications
+            </label>
+
+            {isSlideService ? (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center text-xs font-bold text-slate-700">
+                    <span>Number of Slides</span>
+                    <span className="text-sm font-black text-emerald-700">{slidesCount} Slides</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={5}
+                    max={60}
+                    value={slidesCount}
+                    onChange={(e) => setSlidesCount(Number(e.target.value))}
+                    className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-600"
+                  />
+                  <div className="flex justify-between text-[11px] text-slate-400">
+                    <span>5 Slides (Short Pitch)</span>
+                    <span>30 Slides (Full Defense)</span>
+                    <span>60 Slides (Master Class)</span>
+                  </div>
                 </div>
-                <input
-                  type="range"
-                  min={isSlideService ? 5 : 1}
-                  max={isSlideService ? 50 : 100}
-                  value={isSlideService ? slidesCount : pagesCount}
-                  onChange={(e) => isSlideService ? setSlidesCount(Number(e.target.value)) : setPagesCount(Number(e.target.value))}
-                  className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-600"
-                />
-              </div>
 
-              {/* Slide Extra: Speaker Notes Toggle */}
-              {isSlideService && (
-                <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between">
-                  <div>
-                    <p className="text-xs font-bold text-slate-900">Include Speaker Defense Notes</p>
-                    <p className="text-[11px] text-slate-500">Includes word-for-word presentation speech in slide notes (+₦300/slide)</p>
+                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <span className="text-xs font-bold text-slate-900 block">Include Defense Speaker Notes</span>
+                    <span className="text-[11px] text-slate-500">Word-for-word presentation script for defense (+₦300/slide)</span>
                   </div>
                   <input
                     type="checkbox"
@@ -273,193 +315,201 @@ function OrderWizardContent() {
                     className="w-5 h-5 accent-emerald-600 rounded cursor-pointer"
                   />
                 </div>
-              )}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex justify-between items-center text-xs font-bold text-slate-700">
+                  <span>Page Count (~275 words/page)</span>
+                  <span className="text-sm font-black text-emerald-700">{pagesCount} Pages (~{pagesCount * 275} words)</span>
+                </div>
+                <input
+                  type="range"
+                  min={1}
+                  max={120}
+                  value={pagesCount}
+                  onChange={(e) => setPagesCount(Number(e.target.value))}
+                  className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-600"
+                />
+                <div className="flex justify-between text-[11px] text-slate-400">
+                  <span>1 Page (~275 words)</span>
+                  <span>50 Pages (Full Project)</span>
+                  <span>120 Pages (Dissertation)</span>
+                </div>
+              </div>
+            )}
+
+            {/* Citation Style */}
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-700 block">Citation & Referencing Format</label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {CITATION_STYLES.map((style) => (
+                  <button
+                    key={style}
+                    type="button"
+                    onClick={() => setCitationStyle(style)}
+                    className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all ${
+                      citationStyle === style
+                        ? 'border-emerald-600 bg-emerald-50 text-emerald-800'
+                        : 'border-slate-200 hover:border-slate-300 text-slate-600 bg-white'
+                    }`}
+                  >
+                    {style}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            {/* Step 3: Urgency & Citation Style */}
-            <div className="p-6 bg-white rounded-3xl border border-slate-200/80 shadow-xs space-y-4">
-              <label className="text-xs font-black uppercase tracking-wider text-slate-700 block">
-                3. Deadline & Formatting Format
-              </label>
-
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {/* Urgency / Turnaround Time */}
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-700 block">Turnaround Time / Deadline</label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {URGENCY_OPTIONS.map((urg) => (
                   <button
                     key={urg.id}
                     type="button"
                     onClick={() => setUrgency(urg.id)}
-                    className={`p-3 rounded-xl border text-center transition-all ${
+                    className={`p-3.5 rounded-2xl border-2 text-left transition-all flex items-center justify-between ${
                       urgency === urg.id
-                        ? 'border-emerald-600 bg-emerald-50 text-emerald-950 font-bold shadow-xs'
-                        : 'border-slate-200 text-slate-600 text-xs'
+                        ? 'border-emerald-600 bg-emerald-50/40 text-emerald-950'
+                        : 'border-slate-200 hover:border-slate-300 text-slate-700 bg-white'
                     }`}
                   >
-                    <span className="block text-xs font-bold leading-tight">{urg.name.split('(')[0]}</span>
-                    <span className="text-[10px] text-emerald-700 font-semibold">{urg.badge}</span>
+                    <div>
+                      <p className="text-xs font-bold">{urg.name}</p>
+                      <p className="text-[11px] text-slate-500 mt-0.5">{urg.badge}</p>
+                    </div>
+                    {urgency === urg.id && <CheckCircle2 className="w-4 h-4 text-emerald-600" />}
                   </button>
                 ))}
               </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-700">Citation Style</label>
-                  <select
-                    value={citationStyle}
-                    onChange={(e) => setCitationStyle(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-medium outline-none bg-white"
-                  >
-                    {CITATION_STYLES.map((style) => (
-                      <option key={style} value={style}>{style}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-700">Subject / Department</label>
-                  <input
-                    type="text"
-                    required
-                    value={subjectArea}
-                    onChange={(e) => setSubjectArea(e.target.value)}
-                    placeholder="e.g. Economics, Law, Nursing, CompSci"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-medium outline-none"
-                  />
-                </div>
-              </div>
             </div>
-
-            {/* Step 4: Topic & Instructions */}
-            <div className="p-6 bg-white rounded-3xl border border-slate-200/80 shadow-xs space-y-4">
-              <label className="text-xs font-black uppercase tracking-wider text-slate-700 block">
-                4. Project Topic & Specific Guidelines
-              </label>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700">Project / Topic Title</label>
-                <input
-                  type="text"
-                  required
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="e.g. Comparative Analysis of Corporate Law in Nigeria and the UK"
-                  className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium outline-none focus:border-emerald-500"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700">Detailed Instructions & Rubric</label>
-                <textarea
-                  rows={4}
-                  required
-                  value={instructions}
-                  onChange={(e) => setInstructions(e.target.value)}
-                  placeholder="Describe chapters needed, software requirements (e.g. SPSS version), case studies, or specific dataset..."
-                  className="w-full p-4 rounded-xl border border-slate-200 text-sm font-medium outline-none focus:border-emerald-500"
-                />
-              </div>
-            </div>
-
           </div>
 
-          {/* Right Column: Live Service Charge Breakdown Card */}
-          <div className="space-y-6">
+          {/* 4. Project Details & Instructions */}
+          <div className="p-6 sm:p-8 bg-white rounded-3xl border border-slate-200/80 shadow-xs space-y-4">
+            <label className="text-xs font-black uppercase tracking-wider text-slate-700 block">
+              4. Project Details & Research Rubric
+            </label>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-700">Project / Topic Title</label>
+              <input
+                type="text"
+                required
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="e.g. Econometric Analysis of Foreign Direct Investment on GDP Growth in Nigeria (2010 - 2024)"
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium outline-none focus:border-emerald-500"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-700">Discipline / Subject Field</label>
+              <input
+                type="text"
+                required
+                value={subjectArea}
+                onChange={(e) => setSubjectArea(e.target.value)}
+                placeholder="e.g. Economics, Computer Science, Commercial Law, Nursing..."
+                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-medium outline-none focus:border-emerald-500"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-700">Detailed Guidelines & Supervisor Requirements</label>
+              <textarea
+                rows={4}
+                required
+                value={instructions}
+                onChange={(e) => setInstructions(e.target.value)}
+                placeholder="List required chapters, survey sample size, specific theoretical frameworks, or dataset links..."
+                className="w-full p-4 rounded-xl border border-slate-200 text-sm font-medium outline-none focus:border-emerald-500"
+              />
+            </div>
+          </div>
+
+        </div>
+
+        {/* Right Col: Live Escrow Price Breakdown Card */}
+        <div className="space-y-6">
+          <div className="p-6 sm:p-8 bg-white rounded-3xl border border-slate-200/80 shadow-lg space-y-6 sticky top-24">
             
-            <div className="sticky top-24 p-6 bg-white rounded-3xl border-2 border-emerald-600/30 shadow-xl space-y-6">
-              
-              <div className="space-y-1 border-b border-slate-100 pb-4">
-                <span className="text-[10px] font-extrabold uppercase tracking-widest text-emerald-600">
-                  Escrow Price Breakdown
-                </span>
-                <h3 className="text-lg font-black text-slate-900">Total Project Cost</h3>
-                <p className="text-3xl font-black text-emerald-700 mt-1">
-                  {formatCurrency(totalBudget)}
-                </p>
-                <span className="text-[11px] text-slate-400">100% Refund Guarantee if criteria are unmet</span>
+            <div>
+              <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400">
+                Live Escrow Invoice
+              </span>
+              <p className="text-3xl font-black text-slate-900 mt-1">
+                {formatCurrency(totalBudget)}
+              </p>
+              <span className="text-xs text-slate-500">100% Refundable if deliverable is not approved</span>
+            </div>
+
+            {/* Service Breakdown */}
+            <div className="space-y-3 pt-3 border-t border-slate-100 text-xs text-slate-600">
+              <div className="flex justify-between">
+                <span className="font-medium">Selected Service:</span>
+                <span className="font-bold text-slate-900">{selectedServiceObj.name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="font-medium">Unit Rate:</span>
+                <span className="font-bold text-slate-900">{formatCurrency(effectiveBaseRate)}/{isSlideService ? 'slide' : 'page'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="font-medium">Volume:</span>
+                <span className="font-bold text-slate-900">{unitCount} {isSlideService ? 'Slides' : 'Pages'}</span>
               </div>
 
-              {/* Line Item Breakdown */}
-              <div className="space-y-2.5 text-xs">
-                <div className="flex justify-between text-slate-600">
-                  <span>Service Type:</span>
-                  <span className="font-bold text-slate-900">{selectedServiceObj.name.split('(')[0]}</span>
+              {isSlideService && includeSpeakerNotes && (
+                <div className="flex justify-between text-emerald-700">
+                  <span>Speaker Notes:</span>
+                  <span className="font-bold">+{formatCurrency(speakerNotesFee)}</span>
                 </div>
+              )}
 
-                <div className="flex justify-between text-slate-600">
-                  <span>Academic Level:</span>
-                  <span className="font-bold text-slate-900">{selectedLevelObj.name.split('(')[0]}</span>
+              {urgencyFee > 0 && (
+                <div className="flex justify-between text-amber-700">
+                  <span>Rush Turnaround:</span>
+                  <span className="font-bold">+{formatCurrency(urgencyFee)}</span>
                 </div>
+              )}
 
-                <div className="flex justify-between text-slate-600">
-                  <span>Scope:</span>
-                  <span className="font-bold text-slate-900">
-                    {isSlideService ? `${slidesCount} Slides` : `${pagesCount} Pages`}
-                  </span>
-                </div>
-
-                <div className="flex justify-between text-slate-600">
-                  <span>Service Unit Rate:</span>
-                  <span className="font-bold text-emerald-700">
-                    {formatCurrency(effectiveRatePerUnit)} / {isSlideService ? 'slide' : 'page'}
-                  </span>
-                </div>
-
-                {isSlideService && includeSpeakerNotes && (
-                  <div className="flex justify-between text-slate-600">
-                    <span>Speaker Notes (+₦300/slide):</span>
-                    <span className="font-medium text-emerald-700">+{formatCurrency(speakerNotesFee)}</span>
-                  </div>
-                )}
-
-                <div className="flex justify-between text-slate-600">
-                  <span>Deadline Multiplier:</span>
-                  <span className="font-bold text-slate-900">{selectedUrgencyObj.badge}</span>
-                </div>
-
-                <div className="pt-2 border-t border-slate-100 flex justify-between text-slate-600">
-                  <span>Turnitin Originality Check:</span>
-                  <span className="font-bold text-emerald-600">FREE (Included)</span>
-                </div>
-
-                <div className="flex justify-between text-slate-600">
-                  <span>Turnitin AI Detection:</span>
-                  <span className="font-bold text-emerald-600">FREE (Included)</span>
-                </div>
+              <div className="flex justify-between text-emerald-600 font-bold pt-2 border-t border-slate-100">
+                <span>Turnitin Originality Report:</span>
+                <span>FREE (Included)</span>
               </div>
+            </div>
 
-              {/* Trust Transparency Box */}
-              <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200/80 text-[11px] text-emerald-950 space-y-1.5">
-                <div className="flex items-center gap-1.5 font-bold">
-                  <ShieldCheck className="w-4 h-4 text-emerald-700" />
-                  <span>Escrow Protection Summary:</span>
-                </div>
-                <p className="text-emerald-900 leading-relaxed">
-                  Your <strong>{formatCurrency(totalBudget)}</strong> is safely held by StudyNoteHub. The writer receives their 85% cut (<strong>{formatCurrency(writerEarnings)}</strong>) only after you inspect and accept the final deliverable.
-                </p>
+            {/* Escrow Guarantee Box */}
+            <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs space-y-1.5">
+              <div className="flex items-center gap-1.5 font-bold">
+                <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                <span>How Escrow Protects You:</span>
               </div>
+              <p className="text-[11px] leading-relaxed text-emerald-800">
+                Your payment is held safely by StudyNoteHub. The researcher is only paid when you review the draft and click approve.
+              </p>
+            </div>
 
-              {/* Submit CTA */}
-              <button
-                type="submit"
-                className="w-full py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm shadow-lg shadow-emerald-600/30 transition-all flex items-center justify-center gap-2"
-              >
-                <Lock className="w-4 h-4" />
-                Deposit {formatCurrency(totalBudget)} & Lock Escrow
-                <ArrowRight className="w-4 h-4" />
-              </button>
+            {/* Submit CTA */}
+            <button
+              type="submit"
+              className="w-full py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm shadow-lg shadow-emerald-600/30 transition-all flex items-center justify-center gap-2"
+            >
+              <Lock className="w-4 h-4" />
+              Deposit {formatCurrency(totalBudget)} & Lock Escrow
+              <ArrowRight className="w-4 h-4" />
+            </button>
 
-              <div className="flex items-center justify-center gap-3 text-[11px] text-slate-400 font-semibold">
-                <span>⚡ Instant Writer Match</span>
-                <span>•</span>
-                <span>🔒 Paystack & Flutterwave</span>
-              </div>
-
+            <div className="flex items-center justify-center gap-3 text-[11px] text-slate-400 font-semibold">
+              <span>⚡ Instant Writer Match</span>
+              <span>•</span>
+              <span>🔒 Paystack & Flutterwave</span>
             </div>
 
           </div>
+        </div>
 
-        </form>
-
-      </div>
+      </form>
 
       {/* Checkout Modal */}
       <PaymentModal
@@ -468,10 +518,7 @@ function OrderWizardContent() {
         title={title || 'Custom Assignment Order'}
         amount={totalBudget}
         itemType="ESCROW_FUNDING"
-        onSuccess={() => {
-          setShowPaymentModal(false);
-          router.push('/dashboard');
-        }}
+        onSuccess={handlePaymentSuccess}
       />
     </div>
   );

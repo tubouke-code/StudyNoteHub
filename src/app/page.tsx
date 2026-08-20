@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { 
   BookOpen, 
@@ -19,18 +19,58 @@ import {
   Lock,
   FileText,
   Presentation,
-  Check
+  Check,
+  Loader2
 } from 'lucide-react';
-import { MOCK_DOCUMENTS, MOCK_WRITERS, CATEGORIES, INSTITUTIONS } from '@/lib/mock-data';
+import { CATEGORIES, INSTITUTIONS } from '@/lib/constants';
 import { formatCurrency } from '@/lib/utils';
 import { NoteCard } from '@/components/notes/NoteCard';
+import { createClient } from '@/lib/supabase/client';
+import { DocumentItem, Profile } from '@/types/database.types';
 
 export default function HomePage() {
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<'notes' | 'writers'>('notes');
+  const [popularNotes, setPopularNotes] = useState<DocumentItem[]>([]);
+  const [featuredWriters, setFeaturedWriters] = useState<Profile[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const popularNotes = MOCK_DOCUMENTS.slice(0, 4);
-  const featuredWriters = MOCK_WRITERS.slice(0, 3);
+  useEffect(() => {
+    async function loadHomeData() {
+      try {
+        const supabase = createClient();
+
+        // Fetch top approved notes
+        const { data: notes } = await supabase
+          .from('documents')
+          .select('*, uploader:profiles(*)')
+          .eq('status', 'APPROVED')
+          .order('downloads_count', { ascending: false })
+          .limit(4);
+
+        if (notes && notes.length > 0) {
+          setPopularNotes(notes as DocumentItem[]);
+        }
+
+        // Fetch featured verified writers
+        const { data: writers } = await supabase
+          .from('profiles')
+          .select('*')
+          .or('role.eq.WRITER,is_verified_writer.eq.true')
+          .order('writer_rating', { ascending: false })
+          .limit(3);
+
+        if (writers && writers.length > 0) {
+          setFeaturedWriters(writers as Profile[]);
+        }
+      } catch (err) {
+        console.error('Error fetching homepage data:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    loadHomeData();
+  }, []);
 
   return (
     <div className="space-y-16 sm:space-y-24 pb-20">
@@ -130,16 +170,16 @@ export default function HomePage() {
           {/* Social Proof Stats */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 max-w-4xl mx-auto pt-6 text-center">
             <div className="p-4 bg-white/70 rounded-2xl border border-slate-200/60 shadow-xs">
-              <p className="text-2xl sm:text-3xl font-black text-slate-900">12,400+</p>
-              <p className="text-xs font-semibold text-slate-500 mt-0.5">Study Materials</p>
+              <p className="text-2xl sm:text-3xl font-black text-slate-900">100%</p>
+              <p className="text-xs font-semibold text-slate-500 mt-0.5">Verified Syllabus</p>
             </div>
             <div className="p-4 bg-white/70 rounded-2xl border border-slate-200/60 shadow-xs">
               <p className="text-2xl sm:text-3xl font-black text-emerald-700">100%</p>
               <p className="text-xs font-semibold text-slate-500 mt-0.5">Escrow Money-Back</p>
             </div>
             <div className="p-4 bg-white/70 rounded-2xl border border-slate-200/60 shadow-xs">
-              <p className="text-2xl sm:text-3xl font-black text-slate-900">450+</p>
-              <p className="text-xs font-semibold text-slate-500 mt-0.5">Verified Researchers</p>
+              <p className="text-2xl sm:text-3xl font-black text-slate-900">0%</p>
+              <p className="text-xs font-semibold text-slate-500 mt-0.5">AI & Plagiarism Free</p>
             </div>
             <div className="p-4 bg-white/70 rounded-2xl border border-slate-200/60 shadow-xs">
               <p className="text-2xl sm:text-3xl font-black text-primary-600">90%</p>
@@ -201,7 +241,7 @@ export default function HomePage() {
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h2 className="text-2xl font-black text-slate-900">Featured Notes & Solved Projects</h2>
+            <h2 className="text-2xl font-black text-slate-900">Featured Study Materials & Solved Projects</h2>
             <p className="text-xs sm:text-sm text-slate-500">
               Verified study materials from top universities with sample previews
             </p>
@@ -210,15 +250,40 @@ export default function HomePage() {
             href="/notes"
             className="text-xs font-bold text-primary-600 hover:underline flex items-center gap-1"
           >
-            View all 12,400+ materials <ArrowRight className="w-3.5 h-3.5" />
+            View all materials <ArrowRight className="w-3.5 h-3.5" />
           </Link>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {popularNotes.map((doc) => (
-            <NoteCard key={doc.id} note={doc} />
-          ))}
-        </div>
+        {isLoading ? (
+          <div className="py-12 text-center text-slate-400 flex items-center justify-center gap-2">
+            <Loader2 className="w-5 h-5 animate-spin text-primary-600" />
+            <span>Loading verified study materials...</span>
+          </div>
+        ) : popularNotes.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {popularNotes.map((doc) => (
+              <NoteCard key={doc.id} note={doc} />
+            ))}
+          </div>
+        ) : (
+          <div className="p-10 rounded-3xl bg-white border border-slate-200 text-center space-y-4 max-w-xl mx-auto">
+            <div className="w-12 h-12 bg-primary-50 text-primary-600 rounded-2xl flex items-center justify-center mx-auto">
+              <UploadCloud className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-900">Be the First to Upload</h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Upload your lecture notes or past projects today and start earning 90% royalties whenever other students download!
+              </p>
+            </div>
+            <Link
+              href="/notes/upload"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs shadow-md shadow-primary-600/20 transition-all"
+            >
+              <UploadCloud className="w-4 h-4" /> Upload Material & Earn
+            </Link>
+          </div>
+        )}
       </section>
 
     </div>

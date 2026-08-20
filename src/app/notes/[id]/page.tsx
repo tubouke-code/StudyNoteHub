@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { 
@@ -21,12 +21,15 @@ import {
   Bot,
   Send,
   HelpCircle,
-  Check
+  Check,
+  Loader2,
+  AlertCircle
 } from 'lucide-react';
-import { MOCK_DOCUMENTS, MOCK_CURRENT_USER } from '@/lib/mock-data';
 import { formatCurrency, formatFileSize, formatDate } from '@/lib/utils';
 import { PaymentModal } from '@/components/payments/PaymentModal';
 import { useAuth } from '@/context/AuthContext';
+import { createClient } from '@/lib/supabase/client';
+import { DocumentItem } from '@/types/database.types';
 
 export default function NoteDetailPage() {
   const params = useParams();
@@ -34,27 +37,56 @@ export default function NoteDetailPage() {
   const { user } = useAuth();
   const noteId = params.id as string;
 
-  const note = MOCK_DOCUMENTS.find((d) => d.id === noteId) || MOCK_DOCUMENTS[0];
-  const isFree = Number(note.price) === 0;
+  const [note, setNote] = useState<DocumentItem | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
-  const [isUnlocked, setIsUnlocked] = useState(isFree);
+  const [isUnlocked, setIsUnlocked] = useState(false);
   const [activeTab, setActiveTab] = useState<'PREVIEW' | 'AI_CHAT' | 'SYLLABUS' | 'REVIEWS'>('PREVIEW');
   const [copiedLink, setCopiedLink] = useState(false);
 
   // AI Study Assistant State
   const [aiQuery, setAiQuery] = useState('');
   const [isAiTyping, setIsAiTyping] = useState(false);
-  const [aiChatMessages, setAiChatMessages] = useState([
-    {
-      role: 'assistant',
-      text: `Hello! I am your AI Study Tutor for **"${note.title}"**. Ask me any question, request a summary, or let me generate exam practice questions from this material!`,
-    },
-  ]);
+  const [aiChatMessages, setAiChatMessages] = useState<{ role: string; text: string }[]>([]);
+
+  useEffect(() => {
+    async function loadDocument() {
+      try {
+        const supabase = createClient();
+        const { data, error } = await supabase
+          .from('documents')
+          .select('*, uploader:profiles(*)')
+          .eq('id', noteId)
+          .single();
+
+        if (data) {
+          const doc = data as DocumentItem;
+          setNote(doc);
+          const free = Number(doc.price) === 0;
+          setIsUnlocked(free);
+          setAiChatMessages([
+            {
+              role: 'assistant',
+              text: `Hello! I am your AI Study Tutor for **"${doc.title}"**. Ask me any question, request a summary, or let me generate exam practice questions from this material!`,
+            },
+          ]);
+        }
+      } catch (err) {
+        console.error('Error fetching document:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    if (noteId) {
+      loadDocument();
+    }
+  }, [noteId]);
 
   const handleAskAi = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!aiQuery.trim()) return;
+    if (!aiQuery.trim() || !note) return;
 
     const userQuestion = aiQuery;
     setAiQuery('');
@@ -67,13 +99,14 @@ export default function NoteDetailPage() {
         ...prev,
         {
           role: 'assistant',
-          text: `Based on **${note.course_code} (${note.title})**:\n\n1. **Core Concept**: The material breaks this topic into foundational principles with step-by-step exam breakdowns.\n2. **Key Insight for Exams**: Pay special attention to the formulas and solved past question frameworks in Section 3.\n3. **Quick Practice Tip**: Memorize the definitions on pages 12–15 for high CBT exam scores!`,
+          text: `Based on **${note.course_code} (${note.title})**:\n\n1. **Core Concept**: The material breaks this topic into foundational principles with step-by-step exam breakdowns.\n2. **Key Insight for Exams**: Pay special attention to the formulas and solved past question frameworks in Section 3.\n3. **Quick Practice Tip**: Memorize the definitions for high CBT exam scores!`,
         },
       ]);
     }, 1200);
   };
 
   const handleDownload = () => {
+    if (!note) return;
     if (!isUnlocked) {
       setIsPaymentModalOpen(true);
       return;
@@ -82,10 +115,43 @@ export default function NoteDetailPage() {
   };
 
   const handleShare = () => {
-    navigator.clipboard.writeText(window.location.href);
-    setCopiedLink(true);
-    setTimeout(() => setCopiedLink(false), 2000);
+    if (typeof window !== 'undefined') {
+      navigator.clipboard.writeText(window.location.href);
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2000);
+    }
   };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-[60vh] flex flex-col items-center justify-center gap-3 text-slate-400">
+        <Loader2 className="w-8 h-8 animate-spin text-primary-600" />
+        <span className="text-sm font-medium">Loading study material details...</span>
+      </div>
+    );
+  }
+
+  if (!note) {
+    return (
+      <div className="max-w-xl mx-auto px-4 py-20 text-center space-y-4">
+        <div className="w-16 h-16 bg-slate-100 text-slate-400 rounded-full flex items-center justify-center mx-auto">
+          <AlertCircle className="w-8 h-8" />
+        </div>
+        <h2 className="text-2xl font-black text-slate-900">Study Material Not Found</h2>
+        <p className="text-xs sm:text-sm text-slate-500">
+          This document may have been removed or is pending administrator moderation.
+        </p>
+        <Link
+          href="/notes"
+          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary-600 text-white font-bold text-xs"
+        >
+          <ArrowLeft className="w-4 h-4" /> Back to Notes Catalog
+        </Link>
+      </div>
+    );
+  }
+
+  const isFree = Number(note.price) === 0;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
@@ -140,13 +206,12 @@ export default function NoteDetailPage() {
             <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500 pt-2 border-t border-slate-100">
               <div className="flex items-center gap-1.5">
                 <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
-                <span className="font-bold text-slate-900">{note.rating.toFixed(1)}</span>
-                <span>(34 ratings)</span>
+                <span className="font-bold text-slate-900">{Number(note.rating || 5.0).toFixed(1)}</span>
               </div>
               <span>•</span>
               <div className="flex items-center gap-1">
                 <Download className="w-4 h-4 text-slate-400" />
-                <span>{note.downloads_count} students unlocked</span>
+                <span>{note.downloads_count || 0} students unlocked</span>
               </div>
               <span>•</span>
               <div className="flex items-center gap-1">
@@ -323,7 +388,7 @@ export default function NoteDetailPage() {
                 <li>Module 1: Introduction, Definitions & Terminology</li>
                 <li>Module 2: Historical Context, Key Theorists & Comparative Case Studies</li>
                 <li>Module 3: Quantitative Formulations & Analytical Graphs</li>
-                <li>Module 4: 5 Years Solved Semester Past Questions with Model Solutions</li>
+                <li>Module 4: Solved Semester Past Questions with Model Solutions</li>
               </ul>
             </div>
           )}
@@ -376,18 +441,20 @@ export default function NoteDetailPage() {
             </div>
 
             {/* Author Profile */}
-            <div className="pt-4 border-t border-slate-100 flex items-center gap-3">
-              <img
-                src={note.uploader?.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=150'}
-                alt={note.uploader?.full_name}
-                className="w-10 h-10 rounded-full object-cover ring-2 ring-primary-100"
-              />
-              <div>
-                <p className="text-xs font-bold text-slate-900">{note.uploader?.full_name}</p>
-                <p className="text-[11px] text-slate-500">{note.uploader?.institution || note.institution}</p>
-                <span className="text-[10px] text-emerald-700 font-bold">✓ 90% Creator Royalties Earner</span>
+            {note.uploader && (
+              <div className="pt-4 border-t border-slate-100 flex items-center gap-3">
+                <img
+                  src={note.uploader?.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=150'}
+                  alt={note.uploader?.full_name || 'Author'}
+                  className="w-10 h-10 rounded-full object-cover ring-2 ring-primary-100"
+                />
+                <div>
+                  <p className="text-xs font-bold text-slate-900">{note.uploader?.full_name}</p>
+                  <p className="text-[11px] text-slate-500">{note.uploader?.institution || note.institution}</p>
+                  <span className="text-[10px] text-emerald-700 font-bold">✓ 90% Creator Royalties Earner</span>
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
         </div>

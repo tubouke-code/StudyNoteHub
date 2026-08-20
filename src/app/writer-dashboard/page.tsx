@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { 
   PenTool, 
@@ -18,65 +18,64 @@ import {
   ShieldCheck,
   Lock,
   ArrowRight,
-  GraduationCap
+  GraduationCap,
+  Loader2
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import { MOCK_ORDERS, MOCK_DOCUMENTS, MOCK_WRITERS } from '@/lib/mock-data';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { WriterVerificationModal } from '@/components/writer/WriterVerificationModal';
+import { createClient } from '@/lib/supabase/client';
+import { OrderItem } from '@/types/database.types';
 
 export default function WriterDashboardPage() {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'assigned' | 'open_jobs' | 'notes'>('open_jobs');
+  const [activeTab, setActiveTab] = useState<'assigned' | 'open_jobs'>('assigned');
   const [showVerificationModal, setShowVerificationModal] = useState(false);
 
+  const [assignedOrders, setAssignedOrders] = useState<OrderItem[]>([]);
+  const [openJobs, setOpenJobs] = useState<OrderItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
   // Check if user is a verified writer or admin
-  const isVerified = user?.role === 'WRITER' || user?.role === 'ADMIN' || user?.is_verified_writer;
+  const isVerified = user?.role === 'WRITER' || user?.role === 'ADMIN' || Boolean(user?.is_verified_writer);
 
-  // Filter assigned projects for the current writer
-  const assignedOrders = MOCK_ORDERS.filter(
-    (o) => o.writer_id === 'usr_writer_01' || o.writer?.email === user?.email
-  );
+  useEffect(() => {
+    async function loadWriterData() {
+      try {
+        const supabase = createClient();
 
-  // Open jobs available for bidding
-  const openJobs = [
-    {
-      id: 'job_open_01',
-      title: 'Implementation of Machine Learning Model for Credit Card Fraud Detection',
-      subject: 'Computer Science & AI',
-      level: 'Undergraduate (Final Year)',
-      pages: 25,
-      words: 6500,
-      deadline: '2025-03-08T18:00:00Z',
-      budget: 45000.00,
-      bids_count: 3,
-      urgent: true,
-    },
-    {
-      id: 'job_open_02',
-      title: 'Critique of Corporate Governance & Shareholder Rights under CAMA 2020',
-      subject: 'Commercial Law',
-      level: 'Post-Graduate (LLM)',
-      pages: 15,
-      words: 4000,
-      deadline: '2025-03-12T23:59:00Z',
-      budget: 30000.00,
-      bids_count: 1,
-      urgent: false,
-    },
-    {
-      id: 'job_open_03',
-      title: 'Time Series ARIMA & GARCH Forecasting on Naira-USD Exchange Volatility',
-      subject: 'Financial Economics / STATA',
-      level: 'Masters / M.Sc',
-      pages: 20,
-      words: 5000,
-      deadline: '2025-03-04T12:00:00Z',
-      budget: 40000.00,
-      bids_count: 5,
-      urgent: true,
-    },
-  ];
+        // 1. Fetch assigned projects for current writer
+        if (user) {
+          const { data: assigned } = await supabase
+            .from('orders')
+            .select('*, client:profiles!orders_client_id_fkey(*)')
+            .eq('writer_id', user.id)
+            .order('created_at', { ascending: false });
+
+          if (assigned) {
+            setAssignedOrders(assigned as OrderItem[]);
+          }
+        }
+
+        // 2. Fetch open unassigned jobs
+        const { data: open } = await supabase
+          .from('orders')
+          .select('*, client:profiles!orders_client_id_fkey(*)')
+          .eq('status', 'PENDING')
+          .order('created_at', { ascending: false });
+
+        if (open) {
+          setOpenJobs(open as OrderItem[]);
+        }
+      } catch (err) {
+        console.error('Error loading writer dashboard data:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    loadWriterData();
+  }, [user]);
 
   return (
     <div className="min-h-screen bg-slate-50/50 py-8 sm:py-12">
@@ -86,21 +85,20 @@ export default function WriterDashboardPage() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-2xl sm:text-3xl font-black text-slate-900">
-                Writer & Creator Hub
-              </h1>
-              {isVerified ? (
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                  <ShieldCheck className="w-3.5 h-3.5" /> Verified Writer
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200">
-                  <Lock className="w-3.5 h-3.5" /> Accreditation Pending
+              <span className="text-xs font-bold uppercase tracking-wider text-emerald-800 bg-emerald-100 px-3 py-1 rounded-full border border-emerald-200">
+                Writer & Researcher Portal
+              </span>
+              {isVerified && (
+                <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-800 bg-emerald-100 px-2.5 py-0.5 rounded-full">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Verified
                 </span>
               )}
             </div>
-            <p className="text-xs sm:text-sm text-slate-500 mt-1">
-              Bid on high-paying academic assignments, manage project deliverables, and track note royalties
+            <h1 className="text-2xl sm:text-3xl font-black text-slate-900 mt-2">
+              Writer Operations Center
+            </h1>
+            <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+              Deliver assigned academic projects, bid on open student tasks, and track 85% payouts
             </p>
           </div>
 
@@ -110,228 +108,194 @@ export default function WriterDashboardPage() {
               className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-md transition-all"
             >
               <UploadCloud className="w-4 h-4" />
-              Upload Study Note (85% Cut)
+              Upload Complete Projects (90% Cut)
+            </Link>
+
+            <Link
+              href="/wallet"
+              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md shadow-emerald-600/20 transition-all"
+            >
+              <DollarSign className="w-4 h-4" />
+              Withdraw Balance ({formatCurrency(user?.wallet_balance || 0)})
             </Link>
           </div>
         </div>
 
-        {/* If user is NOT yet verified: Display Locked Accreditation Banner */}
+        {/* Verification Alert Banner if Not Yet Verified */}
         {!isVerified && (
-          <div className="p-6 sm:p-8 rounded-3xl bg-gradient-to-tr from-emerald-950 via-slate-900 to-teal-950 text-white border border-emerald-800/30 shadow-2xl flex flex-col md:flex-row items-center justify-between gap-6">
-            <div className="space-y-2 max-w-2xl text-center md:text-left">
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-400 text-xs font-bold">
-                <GraduationCap className="w-4 h-4" /> Academic Writer Accreditation
+          <div className="p-6 rounded-3xl bg-amber-50 border border-amber-200 text-amber-950 flex flex-col md:flex-row items-center justify-between gap-6 shadow-sm">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-5 h-5 text-amber-600" />
+                <h3 className="text-base font-bold">Writer Accreditation Required</h3>
               </div>
-              <h2 className="text-xl sm:text-2xl font-black">
-                Pay a small token (₦3,500) to start taking jobs & earning!
-              </h2>
-              <p className="text-xs sm:text-sm text-slate-300">
-                To guarantee 100% academic quality and protect students, all writers pay a one-time accreditation token. Once verified, you can immediately bid on projects worth ₦15,000 to ₦80,000+!
+              <p className="text-xs text-amber-800 leading-relaxed max-w-2xl">
+                To protect students from low-quality academic submissions and maintain our 100% Escrow standard, all writers must pay a small one-time accreditation token (₦3,500) before bidding on projects.
               </p>
             </div>
 
             <button
               onClick={() => setShowVerificationModal(true)}
-              className="px-6 py-4 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-sm shadow-lg shadow-emerald-500/30 transition-all shrink-0 flex items-center gap-2"
+              className="px-6 py-3 rounded-2xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-md shrink-0"
             >
-              <ShieldCheck className="w-5 h-5" />
-              Pay ₦3,500 Token & Get Verified
-              <ArrowRight className="w-4 h-4" />
+              Pay Accreditation Token (₦3,500)
             </button>
           </div>
         )}
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-          <div className="p-5 bg-white rounded-2xl border border-slate-200/80 shadow-xs">
-            <div className="flex items-center justify-between text-slate-500">
-              <span className="text-xs font-bold uppercase tracking-wider">Total Earned</span>
-              <DollarSign className="w-4 h-4 text-emerald-600" />
-            </div>
-            <p className="text-2xl font-black text-slate-900 mt-2">
-              {formatCurrency(isVerified ? 145000 : 0)}
-            </p>
-            <span className="text-[11px] text-emerald-600 font-semibold mt-1 block">
-              +₦35,000 pending in escrow
-            </span>
+        {/* Quick Stats Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-6">
+          <div className="p-6 bg-white rounded-3xl border border-slate-200/80 shadow-xs space-y-1">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Assigned Orders</span>
+            <p className="text-3xl font-black text-slate-900 mt-2">{assignedOrders.length}</p>
+            <span className="text-[11px] text-emerald-600 font-semibold block">In Progress</span>
           </div>
 
-          <div className="p-5 bg-white rounded-2xl border border-slate-200/80 shadow-xs">
-            <div className="flex items-center justify-between text-slate-500">
-              <span className="text-xs font-bold uppercase tracking-wider">Active Jobs</span>
-              <Clock className="w-4 h-4 text-amber-600" />
-            </div>
-            <p className="text-2xl font-black text-slate-900 mt-2">
-              {isVerified ? assignedOrders.length : 0}
-            </p>
-            <span className="text-[11px] text-slate-500 font-semibold mt-1 block">
-              In progress / review
-            </span>
+          <div className="p-6 bg-white rounded-3xl border border-slate-200/80 shadow-xs space-y-1">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Open Student Tasks</span>
+            <p className="text-3xl font-black text-slate-900 mt-2">{openJobs.length}</p>
+            <span className="text-[11px] text-indigo-600 font-semibold block">Available for Bidding</span>
           </div>
 
-          <div className="p-5 bg-white rounded-2xl border border-slate-200/80 shadow-xs">
-            <div className="flex items-center justify-between text-slate-500">
-              <span className="text-xs font-bold uppercase tracking-wider">Note Royalties</span>
-              <TrendingUp className="w-4 h-4 text-primary-600" />
-            </div>
-            <p className="text-2xl font-black text-slate-900 mt-2">
-              {formatCurrency(isVerified ? 28500 : 0)}
+          <div className="p-6 bg-white rounded-3xl border border-slate-200/80 shadow-xs space-y-1">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Researcher Rating</span>
+            <p className="text-3xl font-black text-slate-900 mt-2">
+              {Number(user?.writer_rating || 5.0).toFixed(1)} ★
             </p>
-            <span className="text-[11px] text-slate-500 font-semibold mt-1 block">
-              342 downloads this month
-            </span>
+            <span className="text-[11px] text-slate-500 font-semibold block">{user?.total_reviews || 0} reviews</span>
           </div>
 
-          <div className="p-5 bg-white rounded-2xl border border-slate-200/80 shadow-xs">
-            <div className="flex items-center justify-between text-slate-500">
-              <span className="text-xs font-bold uppercase tracking-wider">Quality Score</span>
-              <Sparkles className="w-4 h-4 text-indigo-600" />
-            </div>
-            <p className="text-2xl font-black text-slate-900 mt-2">4.98 ★</p>
-            <span className="text-[11px] text-emerald-600 font-semibold mt-1 block">
-              Top 1% Rated Tutor
-            </span>
+          <div className="p-6 bg-white rounded-3xl border border-slate-200/80 shadow-xs space-y-1">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Net Wallet Balance</span>
+            <p className="text-3xl font-black text-emerald-700 mt-2">{formatCurrency(user?.wallet_balance || 0)}</p>
+            <span className="text-[11px] text-emerald-700 font-semibold block">85% Net Escrow Cut</span>
           </div>
         </div>
 
-        {/* Tab Selection */}
-        <div className="flex border-b border-slate-200 gap-6 text-sm font-bold">
-          <button
-            onClick={() => setActiveTab('open_jobs')}
-            className={`pb-3 transition-colors relative ${
-              activeTab === 'open_jobs'
-                ? 'text-emerald-700 border-b-2 border-emerald-600'
-                : 'text-slate-500 hover:text-slate-900'
-            }`}
-          >
-            Available Writing Jobs ({openJobs.length})
-          </button>
+        {/* Main Orders & Bidding Area */}
+        <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
+          
+          <div className="flex border-b border-slate-200 px-6 pt-4 gap-6 text-xs sm:text-sm font-bold">
+            <button
+              onClick={() => setActiveTab('assigned')}
+              className={`pb-4 transition-colors flex items-center gap-1.5 ${
+                activeTab === 'assigned'
+                  ? 'text-emerald-700 border-b-2 border-emerald-600'
+                  : 'text-slate-500 hover:text-slate-900'
+              }`}
+            >
+              <PenTool className="w-4 h-4" /> My Assigned Projects ({assignedOrders.length})
+            </button>
 
-          <button
-            onClick={() => setActiveTab('assigned')}
-            className={`pb-3 transition-colors relative ${
-              activeTab === 'assigned'
-                ? 'text-emerald-700 border-b-2 border-emerald-600'
-                : 'text-slate-500 hover:text-slate-900'
-            }`}
-          >
-            My In-Progress Projects ({assignedOrders.length})
-          </button>
-        </div>
+            <button
+              onClick={() => setActiveTab('open_jobs')}
+              className={`pb-4 transition-colors flex items-center gap-1.5 ${
+                activeTab === 'open_jobs'
+                  ? 'text-emerald-700 border-b-2 border-emerald-600'
+                  : 'text-slate-500 hover:text-slate-900'
+              }`}
+            >
+              <BookOpen className="w-4 h-4" /> Open Project Feed ({openJobs.length})
+            </button>
+          </div>
 
-        {/* Tab 1: Available Open Jobs */}
-        {activeTab === 'open_jobs' && (
-          <div className="space-y-4">
-            {openJobs.map((job) => (
-              <div
-                key={job.id}
-                className="p-6 bg-white rounded-2xl border border-slate-200/80 shadow-xs hover:border-emerald-300 transition-all flex flex-col md:flex-row md:items-center justify-between gap-4"
-              >
-                <div className="space-y-2 max-w-3xl">
-                  <div className="flex flex-wrap items-center gap-2">
-                    {job.urgent && (
-                      <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-red-100 text-red-700">
-                        Urgent Deadline
-                      </span>
-                    )}
-                    <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-slate-100 text-slate-700">
-                      {job.subject}
-                    </span>
-                    <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">
-                      {job.level}
-                    </span>
-                  </div>
-
-                  <h3 className="text-base sm:text-lg font-bold text-slate-900">
-                    {job.title}
-                  </h3>
-
-                  <div className="flex items-center gap-4 text-xs text-slate-500">
-                    <span><strong>Pages:</strong> {job.pages} (~{job.words.toLocaleString()} words)</span>
-                    <span>•</span>
-                    <span><strong>Deadline:</strong> {formatDate(job.deadline)}</span>
-                    <span>•</span>
-                    <span><strong>Proposals:</strong> {job.bids_count} writers applied</span>
-                  </div>
-                </div>
-
-                <div className="flex flex-row md:flex-col items-center md:items-end justify-between gap-3 pt-3 md:pt-0 border-t md:border-t-0 border-slate-100">
-                  <div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase block md:text-right">
-                      Client Escrow Budget
-                    </span>
-                    <p className="text-xl font-black text-emerald-700">
-                      {formatCurrency(job.budget)}
-                    </p>
-                  </div>
-
-                  {isVerified ? (
-                    <button
-                      onClick={() => alert(`Bid submitted for ${job.title}! Client will be notified.`)}
-                      className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md transition-all"
-                    >
-                      Submit Proposal
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => setShowVerificationModal(true)}
-                      className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-800 border border-slate-200 text-xs font-bold transition-all flex items-center gap-1.5"
-                    >
-                      <Lock className="w-3.5 h-3.5" /> Unlock to Bid
-                    </button>
-                  )}
-                </div>
+          <div className="p-6">
+            {isLoading ? (
+              <div className="py-12 text-center text-slate-400 flex items-center justify-center gap-2">
+                <Loader2 className="w-6 h-6 animate-spin text-emerald-600" />
+                <span>Loading live writer tasks...</span>
               </div>
-            ))}
-          </div>
-        )}
-
-        {/* Tab 2: Assigned Projects */}
-        {activeTab === 'assigned' && (
-          <div className="space-y-4">
-            {assignedOrders.map((order) => (
-              <div
-                key={order.id}
-                className="p-6 bg-white rounded-2xl border border-slate-200/80 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4"
-              >
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-amber-100 text-amber-800">
-                      {order.status}
-                    </span>
-                    <span className="text-xs text-slate-400">Order ID: #{order.id}</span>
+            ) : activeTab === 'assigned' ? (
+              assignedOrders.length === 0 ? (
+                <div className="text-center py-12 space-y-3">
+                  <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+                    <PenTool className="w-6 h-6" />
                   </div>
-                  <h3 className="text-base font-bold text-slate-900">{order.title}</h3>
-                  <p className="text-xs text-slate-500">
-                    Client: {order.student?.full_name} • Due {formatDate(order.deadline)}
+                  <h4 className="text-sm font-bold text-slate-900">No active assigned projects</h4>
+                  <p className="text-xs text-slate-500 max-w-xs mx-auto">
+                    Check the Open Project Feed tab to bid on student assignments and capstone theses.
                   </p>
                 </div>
+              ) : (
+                <div className="divide-y divide-slate-100">
+                  {assignedOrders.map((ord) => (
+                    <div key={ord.id} className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">
+                            {ord.service_type}
+                          </span>
+                          <span className="text-xs text-slate-400">Order #{ord.id.slice(0, 8)}</span>
+                        </div>
+                        <h4 className="text-sm font-bold text-slate-900">{ord.title}</h4>
+                        <p className="text-xs text-slate-500">
+                          {ord.pages_count} units • {ord.academic_level} • Budget: {formatCurrency(ord.budget)}
+                        </p>
+                      </div>
 
-                <div className="flex items-center gap-3">
-                  <div className="text-right">
-                    <span className="text-[10px] text-slate-400 block font-bold uppercase">Locked in Escrow</span>
-                    <p className="text-lg font-black text-emerald-700">{formatCurrency(order.budget)}</p>
-                  </div>
-                  <Link
-                    href={`/hire-writer/orders/${order.id}`}
-                    className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-md transition-all flex items-center gap-1.5"
-                  >
-                    Open Workspace & Submit Draft
-                    <ChevronRight className="w-4 h-4" />
-                  </Link>
+                      <Link
+                        href={`/hire-writer/orders/${ord.id}`}
+                        className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1 shrink-0"
+                      >
+                        Open Workspace <ChevronRight className="w-3.5 h-3.5" />
+                      </Link>
+                    </div>
+                  ))}
                 </div>
-              </div>
-            ))}
+              )
+            ) : (
+              openJobs.length === 0 ? (
+                <div className="text-center py-12 space-y-3">
+                  <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+                    <BookOpen className="w-6 h-6" />
+                  </div>
+                  <h4 className="text-sm font-bold text-slate-900">No open student tasks at the moment</h4>
+                  <p className="text-xs text-slate-500 max-w-xs mx-auto">
+                    New custom projects posted by university students will appear here in real-time.
+                  </p>
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-100">
+                  {openJobs.map((job) => (
+                    <div key={job.id} className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-indigo-100 text-indigo-800">
+                            {job.service_type}
+                          </span>
+                          <span className="text-xs text-slate-400">{job.academic_level}</span>
+                        </div>
+                        <h4 className="text-sm font-bold text-slate-900">{job.title}</h4>
+                        <p className="text-xs text-slate-500">
+                          {job.pages_count} units • Citation: {job.citation_style} • Escrow: {formatCurrency(job.budget)}
+                        </p>
+                      </div>
+
+                      <Link
+                        href={`/hire-writer/orders/${job.id}`}
+                        className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-1 shrink-0"
+                      >
+                        View & Bid <ChevronRight className="w-3.5 h-3.5" />
+                      </Link>
+                    </div>
+                  ))}
+                </div>
+              )
+            )}
           </div>
-        )}
+
+        </div>
 
       </div>
 
-      {/* Writer Verification Token Modal */}
+      {/* Verification Modal */}
       <WriterVerificationModal
         isOpen={showVerificationModal}
         onClose={() => setShowVerificationModal(false)}
-        onSuccess={() => setShowVerificationModal(false)}
+        onSuccess={() => {
+          setShowVerificationModal(false);
+          alert('Accreditation submitted! Your writer profile is now verified.');
+        }}
       />
     </div>
   );

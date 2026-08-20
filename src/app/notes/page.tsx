@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Search, 
   Filter, 
@@ -12,13 +12,19 @@ import {
   DollarSign, 
   UploadCloud, 
   SlidersHorizontal,
-  X
+  X,
+  Loader2
 } from 'lucide-react';
-import { MOCK_DOCUMENTS, CATEGORIES, INSTITUTIONS, LEVELS } from '@/lib/mock-data';
+import { CATEGORIES, INSTITUTIONS, LEVELS } from '@/lib/constants';
 import { NoteCard } from '@/components/notes/NoteCard';
+import { createClient } from '@/lib/supabase/client';
+import { DocumentItem } from '@/types/database.types';
 import Link from 'next/link';
 
 export default function BrowseNotesPage() {
+  const [documents, setDocuments] = useState<DocumentItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedInstitution, setSelectedInstitution] = useState('All Universities');
   const [selectedCategory, setSelectedCategory] = useState('All Materials');
@@ -26,16 +32,46 @@ export default function BrowseNotesPage() {
   const [priceFilter, setPriceFilter] = useState<'ALL' | 'FREE' | 'PAID'>('ALL');
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
 
+  useEffect(() => {
+    async function fetchDocuments() {
+      try {
+        const supabase = createClient();
+        const { data, error } = await supabase
+          .from('documents')
+          .select('*, uploader:profiles(*)')
+          .eq('status', 'APPROVED')
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        if (data) {
+          setDocuments(data as DocumentItem[]);
+        }
+      } catch (err) {
+        console.error('Error fetching documents from Supabase:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    fetchDocuments();
+  }, []);
+
   const filteredNotes = useMemo(() => {
-    return MOCK_DOCUMENTS.filter((note) => {
+    return documents.filter((note) => {
       const matchesSearch = 
         note.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         note.course_code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        note.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        note.institution.toLowerCase().includes(searchQuery.toLowerCase());
+        (note.description && note.description.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        (note.institution && note.institution.toLowerCase().includes(searchQuery.toLowerCase()));
 
       const matchesInstitution = 
-        selectedInstitution === 'All Universities' || note.institution.toLowerCase().includes(selectedInstitution.toLowerCase());
+        selectedInstitution === 'All Universities' || 
+        (note.institution && note.institution.toLowerCase().includes(selectedInstitution.toLowerCase()));
+
+      const matchesCategory =
+        selectedCategory === 'All Materials' ||
+        (note.faculty && note.faculty.toLowerCase().includes(selectedCategory.toLowerCase())) ||
+        (note.department && note.department.toLowerCase().includes(selectedCategory.toLowerCase()));
 
       const matchesLevel = 
         selectedLevel === 'All Levels' || note.level === selectedLevel;
@@ -45,9 +81,9 @@ export default function BrowseNotesPage() {
         (priceFilter === 'FREE' && Number(note.price) === 0) ||
         (priceFilter === 'PAID' && Number(note.price) > 0);
 
-      return matchesSearch && matchesInstitution && matchesLevel && matchesPrice;
+      return matchesSearch && matchesInstitution && matchesCategory && matchesLevel && matchesPrice;
     });
-  }, [searchQuery, selectedInstitution, selectedCategory, selectedLevel, priceFilter]);
+  }, [documents, searchQuery, selectedInstitution, selectedCategory, selectedLevel, priceFilter]);
 
   const resetFilters = () => {
     setSearchQuery('');
@@ -70,7 +106,7 @@ export default function BrowseNotesPage() {
             Browse Lecture Notes & Materials
           </h1>
           <p className="text-sm text-slate-300">
-            Download verified course notes, past exams solutions, and research materials from top students and tutors.
+            Download verified course notes, past exams solutions, and research materials with instant in-browser sample previews.
           </p>
         </div>
         <Link
@@ -78,7 +114,7 @@ export default function BrowseNotesPage() {
           className="px-6 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold text-sm transition-all shadow-lg flex items-center justify-center gap-2 shrink-0 self-start md:self-auto"
         >
           <UploadCloud className="w-4 h-4" />
-          Upload & Sell Notes
+          Upload & Sell Notes (90% Cut)
         </Link>
       </div>
 
@@ -215,26 +251,35 @@ export default function BrowseNotesPage() {
             <p>
               Showing <strong className="text-slate-900">{filteredNotes.length}</strong> study materials
             </p>
-            <div className="flex items-center gap-2">
-              <span>Sort by:</span>
-              <span className="font-bold text-slate-800">Most Downloaded</span>
-            </div>
           </div>
 
-          {/* Empty State or Grid */}
-          {filteredNotes.length === 0 ? (
+          {/* Loading, Empty State, or Grid */}
+          {isLoading ? (
+            <div className="py-16 text-center text-slate-400 flex items-center justify-center gap-2">
+              <Loader2 className="w-6 h-6 animate-spin text-primary-600" />
+              <span>Loading live materials from database...</span>
+            </div>
+          ) : filteredNotes.length === 0 ? (
             <div className="text-center py-16 bg-white rounded-3xl border border-slate-200 space-y-4">
               <BookOpen className="w-12 h-12 text-slate-300 mx-auto" />
               <h3 className="text-lg font-bold text-slate-800">No study notes found</h3>
               <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                We couldn't find any materials matching your filters. Try resetting the filters or search keywords.
+                No materials currently match your search. Be the first to upload lecture notes or complete projects to start earning!
               </p>
-              <button
-                onClick={resetFilters}
-                className="px-4 py-2 rounded-xl bg-primary-50 text-primary-700 font-bold text-xs hover:bg-primary-100"
-              >
-                Clear All Filters
-              </button>
+              <div className="flex items-center justify-center gap-3 pt-2">
+                <button
+                  onClick={resetFilters}
+                  className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 font-bold text-xs hover:bg-slate-200"
+                >
+                  Clear Filters
+                </button>
+                <Link
+                  href="/notes/upload"
+                  className="px-4 py-2 rounded-xl bg-primary-600 text-white font-bold text-xs hover:bg-primary-700"
+                >
+                  Upload Note
+                </Link>
+              </div>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-6">

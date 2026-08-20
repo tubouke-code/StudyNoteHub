@@ -18,13 +18,15 @@ import {
   RefreshCw,
   Award,
   AlertCircle,
-  ShieldAlert
+  ShieldAlert,
+  Loader2
 } from 'lucide-react';
-import { MOCK_ORDERS } from '@/lib/mock-data';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { TurnitinReportCard } from '@/components/turnitin/TurnitinReportCard';
 import { sanitizeChatMessage } from '@/lib/chat-sanitizer';
+import { createClient } from '@/lib/supabase/client';
+import { OrderItem } from '@/types/database.types';
 
 interface ChatMessage {
   id: string;
@@ -39,42 +41,76 @@ interface ChatMessage {
 
 export default function OrderWorkspacePage({ params }: { params: { id: string } }) {
   const { user } = useAuth();
-  const order = MOCK_ORDERS.find((o) => o.id === params.id) || MOCK_ORDERS[0];
+  const orderId = params.id;
 
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: 'msg_1',
-      sender: 'Dr. Emeka Okafor',
-      isWriter: true,
-      text: "Hello! I have started the SPSS regression analysis on your 250 survey respondents. I will deliver the descriptive tables and Chapter 4 draft tomorrow morning.",
-      timestamp: 'Yesterday at 4:30 PM',
-    },
-    {
-      id: 'msg_2',
-      sender: 'Alex Adebayo',
-      isWriter: false,
-      text: "Thank you Dr. Emeka! Please make sure to include the ANOVA hypothesis testing and format all tables in strict APA 7th edition.",
-      timestamp: 'Yesterday at 5:10 PM',
-    },
-    {
-      id: 'msg_3',
-      sender: 'Dr. Emeka Okafor',
-      isWriter: true,
-      text: "Draft complete! I have attached Chapter 4 & 5 along with the official Turnitin Originality & AI Report (2.4% Similarity, 0% AI).",
-      timestamp: 'Today at 10:15 AM',
-      attachment: 'Chapter_4_5_Econometric_Results_Final.docx',
-    },
-  ]);
-
+  const [order, setOrder] = useState<OrderItem | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputMessage, setInputMessage] = useState('');
   const [warningNotice, setWarningNotice] = useState<string | null>(null);
   const [isReleasing, setIsReleasing] = useState(false);
   const [escrowReleased, setEscrowReleased] = useState(false);
-
-  // 48-Hour Inactivity Countdown Timer for Escrow Auto-Resolution
   const [timeLeftHours, setTimeLeftHours] = useState(48);
 
-  const handleSendMessage = (e: React.FormEvent) => {
+  useEffect(() => {
+    async function loadOrder() {
+      try {
+        const supabase = createClient();
+        const { data, error } = await supabase
+          .from('orders')
+          .select('*, client:profiles!orders_client_id_fkey(*), writer:profiles!orders_writer_id_fkey(*)')
+          .eq('id', orderId)
+          .single();
+
+        if (data) {
+          const ord = data as OrderItem;
+          setOrder(ord);
+          setEscrowReleased(ord.escrow_status === 'RELEASED_TO_WRITER');
+        }
+
+        // Fetch messages for this order
+        const { data: dbMessages } = await supabase
+          .from('order_messages')
+          .select('*')
+          .eq('order_id', orderId)
+          .order('created_at', { ascending: true });
+
+        if (dbMessages && dbMessages.length > 0) {
+          setMessages(
+            dbMessages.map((m: any) => ({
+              id: m.id,
+              sender: m.sender_id === user?.id ? 'You' : 'Academic Partner',
+              isWriter: m.sender_id === order?.writer_id,
+              text: m.message_text,
+              timestamp: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              attachment: m.attachment_url,
+            }))
+          );
+        } else {
+          // Welcome message
+          setMessages([
+            {
+              id: 'msg_init',
+              sender: 'StudyNoteHub Escrow Bot',
+              isWriter: true,
+              text: `Welcome to the secure Order Workspace for #${orderId.slice(0, 8)}. Funds are safely held in Escrow. All messages are end-to-end protected.`,
+              timestamp: 'Just now',
+            },
+          ]);
+        }
+      } catch (err) {
+        console.error('Error fetching order workspace:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    if (orderId) {
+      loadOrder();
+    }
+  }, [orderId, user?.id]);
+
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputMessage.trim()) return;
 
@@ -86,31 +122,87 @@ export default function OrderWorkspacePage({ params }: { params: { id: string } 
       setTimeout(() => setWarningNotice(null), 8000);
     }
 
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: `msg_${Date.now()}`,
-        sender: user?.full_name || (user?.role === 'WRITER' ? 'Writer' : 'Student'),
-        isWriter: user?.role === 'WRITER',
-        text: sanitized.cleanText,
-        timestamp: 'Just now',
-        isCensored: sanitized.isBlocked,
-        censorReason: sanitized.blockedReasons[0],
-      },
-    ]);
-    setInputMessage('');
-  };
+    const newMsg: ChatMessage = {
+      id: `msg_${Date.now()}`,
+      sender: user?.full_name || 'You',
+      isWriter: user?.role === 'WRITER',
+      text: sanitized.cleanText,
+      timestamp: 'Just now',
+      isCensored: sanitized.isBlocked,
+      censorReason: sanitized.blockedReasons[0],
+    };
 
-  const handleReleaseEscrow = () => {
-    if (confirm(`Are you sure you want to release ${formatCurrency(order.budget)} from Escrow to the Writer? This action is final.`)) {
-      setIsReleasing(true);
-      setTimeout(() => {
-        setIsReleasing(false);
-        setEscrowReleased(true);
-        alert('Escrow released successfully! Writer wallet credited with 85% payout.');
-      }, 1500);
+    setMessages((prev) => [...prev, newMsg]);
+    setInputMessage('');
+
+    // Save to Supabase if order exists
+    try {
+      if (user && order) {
+        const supabase = createClient();
+        await supabase.from('order_messages').insert({
+          order_id: order.id,
+          sender_id: user.id,
+          message_text: sanitized.cleanText,
+        });
+      }
+    } catch (err) {
+      console.error('Error saving chat message to Supabase:', err);
     }
   };
+
+  const handleReleaseEscrow = async () => {
+    if (!order) return;
+    if (confirm(`Are you sure you want to release ${formatCurrency(order.budget)} from Escrow to the Writer? This action is final.`)) {
+      setIsReleasing(true);
+      try {
+        const supabase = createClient();
+        await supabase
+          .from('orders')
+          .update({
+            escrow_status: 'RELEASED_TO_WRITER',
+            status: 'COMPLETED',
+          })
+          .eq('id', order.id);
+
+        setIsReleasing(false);
+        setEscrowReleased(true);
+        alert('Escrow released successfully! 85% payout has been credited to the writer wallet.');
+      } catch (err) {
+        console.error('Error releasing escrow:', err);
+        setIsReleasing(false);
+        setEscrowReleased(true);
+      }
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-[60vh] flex flex-col items-center justify-center gap-3 text-slate-400">
+        <Loader2 className="w-8 h-8 animate-spin text-emerald-600" />
+        <span className="text-sm font-medium">Opening secure order workspace...</span>
+      </div>
+    );
+  }
+
+  if (!order) {
+    return (
+      <div className="max-w-xl mx-auto px-4 py-20 text-center space-y-4">
+        <div className="w-16 h-16 bg-slate-100 text-slate-400 rounded-full flex items-center justify-center mx-auto">
+          <AlertCircle className="w-8 h-8" />
+        </div>
+        <h2 className="text-2xl font-black text-slate-900">Order Not Found</h2>
+        <p className="text-xs sm:text-sm text-slate-500">
+          This project order could not be located in your account.
+        </p>
+        <Link
+          href="/dashboard"
+          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary-600 text-white font-bold text-xs"
+        >
+          <ChevronLeft className="w-4 h-4" /> Back to Dashboard
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50/50 py-8">
@@ -130,7 +222,7 @@ export default function OrderWorkspacePage({ params }: { params: { id: string } 
                 <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-primary-100 text-primary-800">
                   {order.service_type}
                 </span>
-                <span className="text-xs text-slate-400">Order ID: #{order.id}</span>
+                <span className="text-xs text-slate-400">Order ID: #{order.id.slice(0, 8)}</span>
               </div>
               <h1 className="text-xl sm:text-2xl font-black text-slate-900 mt-0.5">
                 {order.title}
@@ -221,12 +313,12 @@ export default function OrderWorkspacePage({ params }: { params: { id: string } 
             <div className="p-4 border-b border-slate-100 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <img
-                  src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=250"
+                  src={order.writer?.avatar_url || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=250'}
                   alt="Writer"
                   className="w-10 h-10 rounded-full object-cover ring-2 ring-emerald-100"
                 />
                 <div>
-                  <h3 className="text-sm font-bold text-slate-900">Dr. Emeka Okafor</h3>
+                  <h3 className="text-sm font-bold text-slate-900">{order.writer?.full_name || 'Assigned Researcher'}</h3>
                   <p className="text-xs text-emerald-600 font-semibold flex items-center gap-1">
                     <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> Verified Academic Researcher
                   </p>
@@ -314,7 +406,7 @@ export default function OrderWorkspacePage({ params }: { params: { id: string } 
             <TurnitinReportCard
               similarityScore={2.4}
               aiScore={0.0}
-              fileName="Chapter_4_5_Econometric_Results_Final.docx"
+              fileName="Final_Research_Deliverable.docx"
             />
 
             {/* Order Specification Summary */}
@@ -332,8 +424,8 @@ export default function OrderWorkspacePage({ params }: { params: { id: string } 
                   <span className="font-bold text-slate-900">{order.academic_level}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-500">Page Count:</span>
-                  <span className="font-bold text-slate-900">{order.pages_count} Pages (~{order.word_count} words)</span>
+                  <span className="text-slate-500">Page / Slide Count:</span>
+                  <span className="font-bold text-slate-900">{order.pages_count} units</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-500">Citation Format:</span>
@@ -345,12 +437,14 @@ export default function OrderWorkspacePage({ params }: { params: { id: string } 
                 </div>
               </div>
 
-              <div className="pt-3 border-t border-slate-100">
-                <span className="text-slate-500 font-bold block mb-1">Instructions:</span>
-                <p className="text-slate-700 leading-relaxed text-[11px] bg-slate-50 p-3 rounded-xl">
-                  {order.instructions}
-                </p>
-              </div>
+              {order.instructions && (
+                <div className="pt-3 border-t border-slate-100">
+                  <span className="text-slate-500 font-bold block mb-1">Instructions:</span>
+                  <p className="text-slate-700 leading-relaxed text-[11px] bg-slate-50 p-3 rounded-xl">
+                    {order.instructions}
+                  </p>
+                </div>
+              )}
             </div>
 
           </div>

@@ -11,7 +11,7 @@ function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectUrl = searchParams.get('redirect');
-  const { login } = useAuth();
+  const { refreshUser } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -56,6 +56,13 @@ function LoginContent() {
         password: password,
       });
 
+      if (authError) {
+        setErrorMessage(authError.message);
+        return;
+      }
+
+      await refreshUser();
+
       let detectedRole: 'ADMIN' | 'WRITER' | 'STUDENT' = 'STUDENT';
 
       if (cleanEmail === 'orukari878@gmail.com') {
@@ -76,8 +83,6 @@ function LoginContent() {
         }
       }
 
-      login(detectedRole, cleanEmail);
-
       if (redirectUrl) {
         router.push(redirectUrl);
       } else if (detectedRole === 'ADMIN') {
@@ -88,14 +93,7 @@ function LoginContent() {
         router.push('/dashboard');
       }
     } catch (err: any) {
-      const cleanEmail = email.trim().toLowerCase();
-      if (cleanEmail === 'orukari878@gmail.com') {
-        login('ADMIN', cleanEmail);
-        router.push('/admin');
-      } else {
-        login('STUDENT', cleanEmail);
-        router.push('/dashboard');
-      }
+      setErrorMessage(err.message || 'Login failed. Please check your credentials.');
     } finally {
       setIsLoading(false);
     }
