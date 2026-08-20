@@ -13,7 +13,8 @@ import {
   Loader2, 
   KeyRound,
   Sparkles,
-  ArrowLeft
+  ArrowLeft,
+  ExternalLink
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/context/AuthContext';
@@ -138,10 +139,10 @@ function VerifyEmailContent() {
         if (resendError) throw resendError;
       }
 
-      setSuccessMessage('A fresh verification code has been sent to your inbox!');
+      setSuccessMessage('A fresh verification link and code have been sent to your inbox!');
       setCountdown(60);
     } catch (err: any) {
-      setErrorMessage(err.message || 'Failed to resend verification code. Please try again.');
+      setErrorMessage(err.message || 'Failed to resend verification email. Please wait a moment.');
     } finally {
       setIsResending(false);
     }
@@ -180,6 +181,17 @@ function VerifyEmailContent() {
           <p className="text-sm font-black text-slate-900 font-mono break-all">{email || 'your email'}</p>
         </div>
 
+        {/* 2 Ways to Verify Info Card */}
+        <div className="p-4 rounded-2xl bg-indigo-50/60 border border-indigo-100 text-xs text-indigo-900 space-y-2">
+          <p className="font-bold flex items-center gap-1.5 text-indigo-950">
+            <Sparkles className="w-3.5 h-3.5 text-indigo-600" /> 2 Easy Ways to Verify:
+          </p>
+          <div className="space-y-1 text-[11px] text-indigo-800">
+            <p><strong>1. Click the Button in Email:</strong> Open your email app and click <em>"Verify My Email"</em> to log in automatically.</p>
+            <p><strong>2. Or Enter 6-Digit Code:</strong> Enter the code below if provided in the email.</p>
+          </div>
+        </div>
+
         {/* Success / Error Alerts */}
         {errorMessage && (
           <div className="p-3.5 rounded-2xl bg-red-50 border border-red-200 text-xs text-red-700 flex items-start gap-2 animate-in fade-in">
@@ -199,13 +211,12 @@ function VerifyEmailContent() {
         <form onSubmit={handleVerifyOtp} className="space-y-4">
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-slate-700 block">
-              Enter 6-Digit Verification Code
+              Enter 6-Digit Verification Code (Optional)
             </label>
             <div className="relative">
               <KeyRound className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
-                required
                 maxLength={6}
                 value={otpCode}
                 onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
@@ -233,7 +244,7 @@ function VerifyEmailContent() {
             ) : (
               <>
                 <ShieldCheck className="w-4 h-4" />
-                Confirm Email & Access Platform
+                Confirm Email Code
                 <ArrowRight className="w-4 h-4" />
               </>
             )}
@@ -243,7 +254,7 @@ function VerifyEmailContent() {
         {/* Resend Code Section */}
         <div className="text-center pt-2 border-t border-slate-100 space-y-2">
           <p className="text-xs text-slate-500">
-            Didn't receive the code or link? Check your Spam / Promotions folder.
+            Didn't receive the email? Check your Spam / Promotions folder.
           </p>
 
           <button
@@ -253,7 +264,7 @@ function VerifyEmailContent() {
             className="inline-flex items-center gap-1.5 text-xs font-bold text-primary-600 hover:text-primary-700 disabled:text-slate-400"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isResending ? 'animate-spin' : ''}`} />
-            {countdown > 0 ? `Resend Code in ${countdown}s` : 'Resend Verification Code'}
+            {countdown > 0 ? `Resend Email in ${countdown}s` : 'Resend Verification Email'}
           </button>
         </div>
 

@@ -54,11 +54,25 @@ export async function GET(request: Request) {
         .eq('id', data.user.id)
         .single();
 
-      // Check if user has verified their email
-      const isEmailVerified = profile?.is_email_verified;
+      // Check if user has verified their email (or confirmed via email link)
+      const isConfirmedBySupabase = Boolean(data.user.email_confirmed_at);
+      const isEmailVerified = profile?.is_email_verified || isConfirmedBySupabase;
 
-      if (!isEmailVerified) {
-        // Trigger verification OTP to the user's email
+      if (isEmailVerified) {
+        if (!profile?.is_email_verified) {
+          await supabase.from('profiles').update({ is_email_verified: true }).eq('id', data.user.id);
+        }
+
+        // Route according to verified role
+        if (profile?.role === 'ADMIN' && profile?.admin_permission) {
+          return NextResponse.redirect(`${origin}/admin`);
+        } else if (profile?.role === 'WRITER' || data.user.user_metadata?.role === 'WRITER') {
+          return NextResponse.redirect(`${origin}/writer-dashboard`);
+        } else {
+          return NextResponse.redirect(`${origin}/dashboard`);
+        }
+      } else {
+        // Trigger verification OTP/link to the user's email
         try {
           await supabase.auth.signInWithOtp({
             email: userEmail,
@@ -74,15 +88,6 @@ export async function GET(request: Request) {
         return NextResponse.redirect(
           `${origin}/verify-email?email=${encodeURIComponent(userEmail)}&provider=google`
         );
-      }
-
-      // If already verified, route according to role
-      if (profile?.role === 'ADMIN' && profile?.admin_permission) {
-        return NextResponse.redirect(`${origin}/admin`);
-      } else if (profile?.role === 'WRITER' || data.user.user_metadata?.role === 'WRITER') {
-        return NextResponse.redirect(`${origin}/writer-dashboard`);
-      } else {
-        return NextResponse.redirect(`${origin}/dashboard`);
       }
     }
   }
