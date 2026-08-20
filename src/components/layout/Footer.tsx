@@ -10,13 +10,12 @@ export function Footer() {
           
           {/* Brand Col */}
           <div className="lg:col-span-2 space-y-4">
-            <Link href="/" className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-primary-600 flex items-center justify-center text-white font-bold">
-                <BookOpen className="w-5 h-5" />
-              </div>
-              <span className="font-extrabold text-xl tracking-tight text-white">
-                StudyNote<span className="text-primary-400">Hub</span>
-              </span>
+            <Link href="/" className="inline-block">
+              <img
+                src="/logo.jpg"
+                alt="StudyNoteHub"
+                className="h-12 w-auto object-contain rounded-xl bg-white p-1 shadow-sm"
+              />
             </Link>
             <p className="text-slate-400 text-sm leading-relaxed max-w-sm">
               The premier platform for university and college students to access peer-reviewed lecture notes, exam past questions, and hire vetted academic research writers with guaranteed milestone escrow protection.

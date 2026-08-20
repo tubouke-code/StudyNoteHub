@@ -152,15 +152,15 @@ function VerifyEmailContent() {
     <div className="min-h-[85vh] flex items-center justify-center px-4 py-12 bg-slate-50/50">
       <div className="w-full max-w-md bg-white rounded-3xl p-8 sm:p-10 border border-slate-200/80 shadow-2xl space-y-6">
         
-        {/* Header Icon */}
+        {/* Header Icon & Logo */}
         <div className="text-center space-y-3">
-          <div className="w-16 h-16 bg-primary-50 text-primary-600 rounded-3xl flex items-center justify-center mx-auto shadow-inner border border-primary-100">
-            {isVerified ? (
-              <CheckCircle2 className="w-8 h-8 text-emerald-600 animate-bounce" />
-            ) : (
-              <Mail className="w-8 h-8" />
-            )}
-          </div>
+          <Link href="/" className="inline-block">
+            <img
+              src="/logo.jpg"
+              alt="StudyNoteHub"
+              className="h-12 w-auto object-contain mx-auto rounded-xl"
+            />
+          </Link>
 
           <div>
             <span className="text-[11px] font-extrabold uppercase tracking-widest text-primary-600 bg-primary-50 px-3 py-0.5 rounded-full border border-primary-100">

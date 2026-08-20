@@ -209,13 +209,12 @@ export default function RegisterPage() {
         
         {/* Header */}
         <div className="text-center space-y-2">
-          <Link href="/" className="inline-flex items-center gap-2 mb-2">
-            <div className="w-10 h-10 rounded-xl bg-primary-600 flex items-center justify-center text-white font-bold">
-              <BookOpen className="w-5 h-5" />
-            </div>
-            <span className="font-extrabold text-xl tracking-tight text-slate-900">
-              StudyNote<span className="text-primary-600">Hub</span>
-            </span>
+          <Link href="/" className="inline-block mb-2">
+            <img
+              src="/logo.jpg"
+              alt="StudyNoteHub"
+              className="h-14 w-auto object-contain mx-auto rounded-xl"
+            />
           </Link>
           <h2 className="text-2xl font-black text-slate-900">Create Free Account</h2>
           <p className="text-xs text-slate-500">

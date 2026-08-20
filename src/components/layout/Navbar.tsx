@@ -93,18 +93,12 @@ export function Navbar() {
         <div className="flex items-center justify-between h-16 sm:h-20">
           
           {/* Logo */}
-          <Link href="/" className="flex items-center gap-2.5 group">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-primary-600 to-indigo-500 flex items-center justify-center text-white shadow-md shadow-primary-500/20 group-hover:scale-105 transition-transform">
-              <BookOpen className="w-5 h-5" />
-            </div>
-            <div>
-              <span className="font-extrabold text-xl tracking-tight text-slate-900 flex items-center gap-1">
-                StudyNote<span className="text-primary-600">Hub</span>
-              </span>
-              <span className="block text-[10px] font-medium tracking-wider text-slate-500 uppercase">
-                Notes & Escrow Projects
-              </span>
-            </div>
+          <Link href="/" className="flex items-center gap-2.5 group py-1">
+            <img
+              src="/logo.jpg"
+              alt="StudyNoteHub"
+              className="h-10 sm:h-12 w-auto object-contain rounded-xl shadow-xs group-hover:scale-105 transition-transform"
+            />
           </Link>
 
           {/* Desktop Navigation */}

@@ -7,6 +7,11 @@ import { AuthProvider } from '@/context/AuthContext';
 export const metadata: Metadata = {
   title: 'StudyNoteHub — Download Lecture Notes & Hire Academic Project Writers',
   description: 'The #1 platform for university students to share, buy, and download lecture notes, and hire verified academic writers for assignments, projects, and theses with 100% escrow protection.',
+  icons: {
+    icon: '/favicon.png',
+    shortcut: '/favicon.png',
+    apple: '/favicon.png',
+  },
 };
 
 export default function RootLayout({
