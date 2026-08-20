@@ -3,8 +3,19 @@ import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 
 export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url);
-  const code = searchParams.get('code');
+  const requestUrl = new URL(request.url);
+  const code = requestUrl.searchParams.get('code');
+  const forwardedHost = request.headers.get('x-forwarded-host');
+  const forwardedProto = request.headers.get('x-forwarded-proto') || 'https';
+  
+  let origin = requestUrl.origin;
+  if (forwardedHost) {
+    origin = `${forwardedProto}://${forwardedHost}`;
+  } else if (process.env.NEXT_PUBLIC_SITE_URL) {
+    origin = process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, '');
+  } else if (origin.includes('localhost') && process.env.NODE_ENV === 'production') {
+    origin = 'https://study-note-hub.vercel.app';
+  }
 
   if (code) {
     const cookieStore = cookies();
@@ -31,7 +42,7 @@ export async function GET(request: Request) {
     if (!error && data?.user) {
       const userEmail = data.user.email?.toLowerCase() || '';
 
-      // ONLY your specific email is automatically the Super Admin
+      // Super Admin
       if (userEmail === 'orukari878@gmail.com') {
         return NextResponse.redirect(`${origin}/admin`);
       }
@@ -43,21 +54,15 @@ export async function GET(request: Request) {
         .eq('id', data.user.id)
         .single();
 
-      // If designated as ADMIN by the Super Admin in database
       if (profile?.role === 'ADMIN' && profile?.admin_permission) {
         return NextResponse.redirect(`${origin}/admin`);
-      } 
-      // If signed up as WRITER
-      else if (profile?.role === 'WRITER' || data.user.user_metadata?.role === 'WRITER') {
+      } else if (profile?.role === 'WRITER' || data.user.user_metadata?.role === 'WRITER') {
         return NextResponse.redirect(`${origin}/writer-dashboard`);
-      } 
-      // All other normal users / students go to the Student Dashboard!
-      else {
+      } else {
         return NextResponse.redirect(`${origin}/dashboard`);
       }
     }
   }
 
-  // Fallback
   return NextResponse.redirect(`${origin}/dashboard`);
 }

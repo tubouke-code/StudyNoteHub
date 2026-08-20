@@ -18,6 +18,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { getAppURL } from '@/lib/utils';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -54,11 +55,11 @@ export default function RegisterPage() {
 
     try {
       const supabase = createClient();
-      const origin = window.location.origin;
+      const appUrl = getAppURL();
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${origin}/auth/callback`,
+          redirectTo: `${appUrl}/auth/callback`,
         },
       });
 
@@ -79,12 +80,12 @@ export default function RegisterPage() {
 
     try {
       const supabase = createClient();
-      const origin = window.location.origin;
+      const appUrl = getAppURL();
       const { data, error } = await supabase.auth.signUp({
         email: email.trim().toLowerCase(),
         password,
         options: {
-          emailRedirectTo: `${origin}/auth/callback`,
+          emailRedirectTo: `${appUrl}/auth/callback`,
           data: {
             full_name: fullName,
             institution,

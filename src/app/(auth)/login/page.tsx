@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { BookOpen, Lock, Mail, ArrowRight, ShieldCheck, Loader2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { createClient } from '@/lib/supabase/client';
+import { getAppURL } from '@/lib/utils';
 
 function LoginContent() {
   const router = useRouter();
@@ -25,11 +26,11 @@ function LoginContent() {
 
     try {
       const supabase = createClient();
-      const origin = window.location.origin;
+      const appUrl = getAppURL();
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${origin}/auth/callback`,
+          redirectTo: `${appUrl}/auth/callback`,
         },
       });
 

@@ -5,6 +5,25 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+export function getAppURL(): string {
+  let url =
+    process.env.NEXT_PUBLIC_SITE_URL ??
+    process.env.NEXT_PUBLIC_VERCEL_URL ??
+    'https://study-note-hub.vercel.app';
+
+  if (typeof window !== 'undefined' && window.location.origin) {
+    url = window.location.origin;
+  }
+
+  // Ensure https:// protocol for remote domains
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    url = `https://${url}`;
+  }
+
+  // Remove trailing slash
+  return url.replace(/\/$/, '');
+}
+
 export function formatCurrency(amount: number, currency: string = "NGN"): string {
   if (currency === "NGN") {
     return new Intl.NumberFormat("en-NG", {

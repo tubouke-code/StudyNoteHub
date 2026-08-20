@@ -22,6 +22,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const syncSupabaseProfile = async () => {
     try {
       const supabase = createClient();
+
+      // Check if URL has ?code= from an auth redirect
+      if (typeof window !== 'undefined') {
+        const urlParams = new URLSearchParams(window.location.search);
+        const code = urlParams.get('code');
+        if (code) {
+          try {
+            const { data: exchangeData, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+            if (!exchangeError && exchangeData?.session) {
+              const newUrl = window.location.pathname;
+              window.history.replaceState({}, document.title, newUrl);
+            }
+          } catch (e) {
+            console.error('Error exchanging auth code:', e);
+          }
+        }
+      }
+
       const { data: { session } } = await supabase.auth.getSession();
 
       if (session?.user) {
