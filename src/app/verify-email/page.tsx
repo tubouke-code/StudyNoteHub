@@ -35,6 +35,19 @@ function VerifyEmailContent() {
   const [countdown, setCountdown] = useState(60);
   const [isVerified, setIsVerified] = useState(false);
 
+  // Auto-redirect if already verified
+  useEffect(() => {
+    if (user?.is_email_verified) {
+      if (user.email.toLowerCase() === 'orukari878@gmail.com') {
+        router.push('/admin');
+      } else if (user.role === 'WRITER') {
+        router.push('/writer-dashboard');
+      } else {
+        router.push('/dashboard');
+      }
+    }
+  }, [user, router]);
+
   useEffect(() => {
     if (emailParam) {
       setEmail(emailParam);
@@ -71,65 +84,79 @@ function VerifyEmailContent() {
       const supabase = createClient();
       
       // 1. Try verify with 'email' (Magic Link OTP)
-      const { data, error } = await supabase.auth.verifyOtp({
+      let authResult = await supabase.auth.verifyOtp({
         email: email.trim().toLowerCase(),
         token: otpCode.trim(),
         type: 'email',
       });
 
-      if (error) {
+      if (authResult.error) {
         // 2. Try with 'signup' token type
-        const { data: signupData, error: signupError } = await supabase.auth.verifyOtp({
+        authResult = await supabase.auth.verifyOtp({
           email: email.trim().toLowerCase(),
           token: otpCode.trim(),
           type: 'signup',
         });
 
-        if (signupError) {
+        if (authResult.error) {
           // 3. Try with 'magiclink' token type
-          const { data: magicData, error: magicError } = await supabase.auth.verifyOtp({
+          authResult = await supabase.auth.verifyOtp({
             email: email.trim().toLowerCase(),
             token: otpCode.trim(),
             type: 'magiclink' as any,
           });
 
-          if (magicError) {
-            throw new Error(magicError.message || signupError.message || error.message);
+          if (authResult.error) {
+            throw new Error(authResult.error.message);
           }
         }
       }
 
-      // Mark email as verified in profiles table
-      const verifiedUserId = user?.id || data?.user?.id;
-      if (verifiedUserId) {
-        await supabase
-          .from('profiles')
-          .update({ is_email_verified: true })
-          .eq('id', verifiedUserId);
-      } else {
-        await supabase
-          .from('profiles')
-          .update({ is_email_verified: true })
-          .eq('email', email.trim().toLowerCase());
+      const verifiedUser = authResult.data?.user || user;
+      const verifiedUserId = verifiedUser?.id;
+
+      // Update user metadata in Supabase Auth
+      try {
+        await supabase.auth.updateUser({
+          data: { is_email_verified: true }
+        });
+      } catch (e) {
+        console.error('Error updating user metadata:', e);
       }
 
-      await refreshUser();
-      setIsVerified(true);
-      setSuccessMessage('Email verified successfully! Redirecting to your dashboard...');
+      // Upsert into profiles table
+      if (verifiedUserId) {
+        const authUserMeta = (authResult.data?.user as any)?.user_metadata;
+        const fullName = user?.full_name || authUserMeta?.full_name || authUserMeta?.name || email.split('@')[0] || 'User';
 
+        await supabase
+          .from('profiles')
+          .upsert({
+            id: verifiedUserId,
+            email: email.trim().toLowerCase(),
+            full_name: fullName,
+            is_email_verified: true,
+          }, { onConflict: 'id' });
+      }
+
+      setIsVerified(true);
+      setSuccessMessage('Email verified successfully! Taking you to your dashboard...');
+      
+      await refreshUser();
+
+      // Redirect directly
       setTimeout(() => {
         if (email.toLowerCase() === 'orukari878@gmail.com') {
-          router.push('/admin');
+          window.location.href = '/admin';
         } else if (user?.role === 'WRITER') {
-          router.push('/writer-dashboard');
+          window.location.href = '/writer-dashboard';
         } else {
-          router.push('/dashboard');
+          window.location.href = '/dashboard';
         }
-      }, 1500);
+      }, 1000);
 
     } catch (err: any) {
       setErrorMessage(err.message || 'Invalid or expired verification code. Please request a fresh code.');
-    } finally {
       setIsLoading(false);
     }
   };

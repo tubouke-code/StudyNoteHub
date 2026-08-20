@@ -54,11 +54,32 @@ export async function GET(request: Request) {
         .eq('id', data.user.id)
         .single();
 
-      // STRICT: User is ONLY verified if profile.is_email_verified is true in our database.
-      // (Google accounts must also undergo platform verification)
-      const isEmailVerified = Boolean(profile?.is_email_verified);
+      // Check if verified in database OR in auth user metadata
+      const isEmailVerified = Boolean(profile?.is_email_verified) || Boolean(data.user.user_metadata?.is_email_verified);
 
-      if (!isEmailVerified) {
+      if (isEmailVerified) {
+        if (!profile?.is_email_verified) {
+          try {
+            await supabase.from('profiles').upsert({
+              id: data.user.id,
+              email: userEmail,
+              full_name: data.user.user_metadata?.full_name || data.user.user_metadata?.name || userEmail.split('@')[0],
+              is_email_verified: true,
+            }, { onConflict: 'id' });
+          } catch (e) {
+            console.error('Error upserting verified profile:', e);
+          }
+        }
+
+        // Route according to verified role
+        if (profile?.role === 'ADMIN' && profile?.admin_permission) {
+          return NextResponse.redirect(`${origin}/admin`);
+        } else if (profile?.role === 'WRITER' || data.user.user_metadata?.role === 'WRITER') {
+          return NextResponse.redirect(`${origin}/writer-dashboard`);
+        } else {
+          return NextResponse.redirect(`${origin}/dashboard`);
+        }
+      } else {
         // Trigger verification OTP/link to user's email
         try {
           await supabase.auth.signInWithOtp({
@@ -76,15 +97,6 @@ export async function GET(request: Request) {
         return NextResponse.redirect(
           `${origin}/verify-email?email=${encodeURIComponent(userEmail)}&provider=google`
         );
-      }
-
-      // If already verified, route according to role
-      if (profile?.role === 'ADMIN' && profile?.admin_permission) {
-        return NextResponse.redirect(`${origin}/admin`);
-      } else if (profile?.role === 'WRITER' || data.user.user_metadata?.role === 'WRITER') {
-        return NextResponse.redirect(`${origin}/writer-dashboard`);
-      } else {
-        return NextResponse.redirect(`${origin}/dashboard`);
       }
     }
   }

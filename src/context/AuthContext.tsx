@@ -66,7 +66,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           role = (profile?.role as UserRole) || 'STUDENT';
         }
 
-        const isVerified = Boolean(profile?.is_email_verified) || email === 'orukari878@gmail.com';
+        const isVerified = Boolean(profile?.is_email_verified) || Boolean(authUser.user_metadata?.is_email_verified) || email === 'orukari878@gmail.com';
+
+        // Auto-heal / upsert profile if missing
+        if (!profile && isVerified) {
+          try {
+            await supabase.from('profiles').upsert({
+              id: authUser.id,
+              email: email,
+              full_name: authUser.user_metadata?.full_name || authUser.user_metadata?.name || email.split('@')[0] || 'User',
+              role: role,
+              is_email_verified: true,
+            }, { onConflict: 'id' });
+          } catch (e) {
+            console.error('Error auto-upserting profile:', e);
+          }
+        }
 
         const activeProfile: Profile = {
           id: authUser.id,
