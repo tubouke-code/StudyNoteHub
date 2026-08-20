@@ -21,6 +21,7 @@ import {
   GraduationCap,
   Loader2
 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { WriterVerificationModal } from '@/components/writer/WriterVerificationModal';
@@ -28,6 +29,7 @@ import { createClient } from '@/lib/supabase/client';
 import { OrderItem } from '@/types/database.types';
 
 export default function WriterDashboardPage() {
+  const router = useRouter();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'assigned' | 'open_jobs'>('assigned');
   const [showVerificationModal, setShowVerificationModal] = useState(false);
@@ -41,6 +43,10 @@ export default function WriterDashboardPage() {
 
   useEffect(() => {
     async function loadWriterData() {
+      if (user && !user.is_email_verified && user.email !== 'orukari878@gmail.com') {
+        router.push(`/verify-email?email=${encodeURIComponent(user.email)}`);
+        return;
+      }
       try {
         const supabase = createClient();
 

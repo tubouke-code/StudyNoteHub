@@ -86,11 +86,17 @@ function VerifyEmailContent() {
       }
 
       // Mark email as verified in profiles table
-      if (user?.id) {
+      const verifiedUserId = user?.id || data?.user?.id;
+      if (verifiedUserId) {
         await supabase
           .from('profiles')
           .update({ is_email_verified: true })
-          .eq('id', user.id);
+          .eq('id', verifiedUserId);
+      } else {
+        await supabase
+          .from('profiles')
+          .update({ is_email_verified: true })
+          .eq('email', email.trim().toLowerCase());
       }
 
       await refreshUser();

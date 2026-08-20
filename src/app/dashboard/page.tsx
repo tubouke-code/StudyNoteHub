@@ -20,6 +20,7 @@ import {
   ArrowRight,
   Loader2
 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { WriterVerificationModal } from '@/components/writer/WriterVerificationModal';
@@ -27,6 +28,7 @@ import { createClient } from '@/lib/supabase/client';
 import { OrderItem, DocumentItem } from '@/types/database.types';
 
 export default function StudentDashboardPage() {
+  const router = useRouter();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'orders' | 'notes' | 'uploads'>('orders');
   const [showVerificationModal, setShowVerificationModal] = useState(false);
@@ -39,6 +41,11 @@ export default function StudentDashboardPage() {
     async function loadDashboardData() {
       if (!user) {
         setIsLoading(false);
+        return;
+      }
+
+      if (!user.is_email_verified && user.email !== 'orukari878@gmail.com') {
+        router.push(`/verify-email?email=${encodeURIComponent(user.email)}`);
         return;
       }
 

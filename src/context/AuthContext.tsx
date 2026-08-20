@@ -66,6 +66,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           role = (profile?.role as UserRole) || 'STUDENT';
         }
 
+        const isVerified = Boolean(profile?.is_email_verified) || email === 'orukari878@gmail.com';
+
         const activeProfile: Profile = {
           id: authUser.id,
           email: email,
@@ -78,7 +80,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           bio: profile?.bio,
           wallet_balance: Number(profile?.wallet_balance) || 0,
           is_verified_writer: Boolean(profile?.is_verified_writer) || role === 'ADMIN',
-          is_email_verified: Boolean(profile?.is_email_verified) || email === 'orukari878@gmail.com',
+          is_email_verified: isVerified,
           writer_skills: profile?.writer_skills || [],
           writer_rating: profile?.writer_rating || 5.0,
           total_reviews: profile?.total_reviews || 0,
@@ -89,6 +91,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(activeProfile);
         setIsLoggedIn(true);
         localStorage.setItem('snh_auth_session', JSON.stringify(activeProfile));
+
+        // If user is not verified and is currently on protected or entry routes, redirect to /verify-email
+        if (!isVerified && typeof window !== 'undefined') {
+          const pathname = window.location.pathname;
+          if (
+            pathname.startsWith('/dashboard') ||
+            pathname.startsWith('/writer-dashboard') ||
+            pathname.startsWith('/hire-writer/new') ||
+            pathname.startsWith('/notes/upload')
+          ) {
+            window.location.href = `/verify-email?email=${encodeURIComponent(email)}`;
+          }
+        }
         return;
       } else {
         // No active session
