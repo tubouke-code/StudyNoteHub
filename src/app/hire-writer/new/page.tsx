@@ -26,29 +26,57 @@ import { useAuth } from '@/context/AuthContext';
 import { PaymentModal } from '@/components/payments/PaymentModal';
 import { createClient } from '@/lib/supabase/client';
 
-// Academic Degree Levels & Fixed Pricing Matrix (PhD > MSc > BSc)
+// Academic Degree Levels & Fixed Pricing Matrix (PhD > MSc > BSc > Teacher > Secondary)
 interface DegreeLevel {
-  id: 'undergrad' | 'postgrad' | 'phd';
+  id: 'secondary' | 'teacher' | 'undergrad' | 'postgrad' | 'phd';
   name: string;
   shortLabel: string;
   badge: string;
   desc: string;
   pricing: {
-    project: number;        // Complete Project / Thesis / Dissertation (Chapters 1-5)
-    coursework: number;     // Assignment / Term Paper / Essay
-    proposal: number;       // Research Proposal / Seminar Paper
-    defense_slides: number; // Defense Slide Deck
-    proofreading: number;   // Proofreading & Plagiarism Reduction
+    project: number;        // Complete Project / Thesis / Compilation
+    coursework: number;     // Assignment / Lesson Plan / Essay
+    proposal: number;       // Research Proposal / Exam & Marking Guide
+    defense_slides: number; // Presentation / Teaching Slides
+    proofreading: number;   // Proofreading & Review
   };
 }
 
 const ACADEMIC_LEVELS: DegreeLevel[] = [
   {
+    id: 'secondary',
+    name: 'Secondary School (JSS 1–3, SSS 1–3, WAEC, NECO, JAMB)',
+    shortLabel: 'Secondary School',
+    badge: 'Secondary Tier',
+    desc: 'Holiday projects, term assignments, WAEC/JAMB practical solutions, and essay competitions',
+    pricing: {
+      project: 8000,
+      coursework: 3000,
+      proposal: 5000,
+      defense_slides: 3000,
+      proofreading: 2000,
+    },
+  },
+  {
+    id: 'teacher',
+    name: 'Teacher & Educator Resources (Lesson Notes, Schemes of Work, Exams)',
+    shortLabel: 'Teacher / Educator',
+    badge: 'Educator Tier',
+    desc: 'Curriculum lesson plans, 12-week lesson note packs, termly schemes of work & exam marking schemes',
+    pricing: {
+      project: 15000,
+      coursework: 5000,
+      proposal: 6000,
+      defense_slides: 4000,
+      proofreading: 3000,
+    },
+  },
+  {
     id: 'undergrad',
     name: 'Undergraduate (B.Sc / B.A / B.Tech / HND / OND)',
     shortLabel: 'B.Sc / Undergraduate',
     badge: 'Undergrad Tier',
-    desc: '100L - 500L University & Polytechnic degree projects and coursework',
+    desc: '100L - 500L University & Polytechnic degree projects, term papers and coursework',
     pricing: {
       project: 25000,
       coursework: 7000,
@@ -168,7 +196,7 @@ function OrderWizardContent() {
   const assignedWriterId = searchParams.get('writer_id');
   const { user, isLoggedIn } = useAuth();
 
-  const [academicLevel, setAcademicLevel] = useState<'undergrad' | 'postgrad' | 'phd'>('undergrad');
+  const [academicLevel, setAcademicLevel] = useState<'secondary' | 'teacher' | 'undergrad' | 'postgrad' | 'phd'>('undergrad');
   const [serviceType, setServiceType] = useState<string>(
     preselectedService === 'slides' ? 'defense_slides' : 'project'
   );

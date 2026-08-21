@@ -26,9 +26,9 @@ export default function BrowseNotesPage() {
   const [isLoading, setIsLoading] = useState(true);
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedInstitution, setSelectedInstitution] = useState('All Universities');
-  const [selectedCategory, setSelectedCategory] = useState('All Materials');
-  const [selectedLevel, setSelectedLevel] = useState('All Levels');
+  const [selectedInstitution, setSelectedInstitution] = useState(INSTITUTIONS[0]);
+  const [selectedCategory, setSelectedCategory] = useState(CATEGORIES[0]);
+  const [selectedLevel, setSelectedLevel] = useState(LEVELS[0]);
   const [priceFilter, setPriceFilter] = useState<'ALL' | 'FREE' | 'PAID'>('ALL');
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
 
@@ -65,16 +65,18 @@ export default function BrowseNotesPage() {
         (note.institution && note.institution.toLowerCase().includes(searchQuery.toLowerCase()));
 
       const matchesInstitution = 
-        selectedInstitution === 'All Universities' || 
+        selectedInstitution === INSTITUTIONS[0] || 
+        selectedInstitution === 'All Universities' ||
         (note.institution && note.institution.toLowerCase().includes(selectedInstitution.toLowerCase()));
 
       const matchesCategory =
+        selectedCategory === CATEGORIES[0] ||
         selectedCategory === 'All Materials' ||
         (note.faculty && note.faculty.toLowerCase().includes(selectedCategory.toLowerCase())) ||
         (note.department && note.department.toLowerCase().includes(selectedCategory.toLowerCase()));
 
       const matchesLevel = 
-        selectedLevel === 'All Levels' || note.level === selectedLevel;
+        selectedLevel === LEVELS[0] || selectedLevel === 'All Levels' || note.level === selectedLevel;
 
       const matchesPrice = 
         priceFilter === 'ALL' ||
@@ -87,9 +89,9 @@ export default function BrowseNotesPage() {
 
   const resetFilters = () => {
     setSearchQuery('');
-    setSelectedInstitution('All Universities');
-    setSelectedCategory('All Materials');
-    setSelectedLevel('All Levels');
+    setSelectedInstitution(INSTITUTIONS[0]);
+    setSelectedCategory(CATEGORIES[0]);
+    setSelectedLevel(LEVELS[0]);
     setPriceFilter('ALL');
   };
 

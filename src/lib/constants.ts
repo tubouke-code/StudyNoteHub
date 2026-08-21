@@ -5,7 +5,11 @@
  */
 
 export const INSTITUTIONS = [
-  'All Universities',
+  'All Institutions & Schools',
+  'Secondary School (National Curriculum / NERDC)',
+  'WAEC / NECO / BECE / GCE Body',
+  'JAMB / UTME Preparation',
+  'Cambridge IGCSE & British Curriculum',
   'University of Lagos (UNILAG)',
   'University of Ibadan (UI)',
   'Obafemi Awolowo University (OAU)',
@@ -26,11 +30,17 @@ export const INSTITUTIONS = [
   'Nnamdi Azikiwe University (UNIZIK)',
   'Federal Poly Nekede',
   'Yaba College of Technology (YABATECH)',
-  'Other / International Institution',
+  'Other Secondary / Tertiary Institution',
 ];
 
 export const CATEGORIES = [
-  'All Materials',
+  'All Materials & Resources',
+  'Secondary: Mathematics & Sciences (Physics, Chem, Bio)',
+  'Secondary: Arts, English Language & Literature',
+  'Secondary: Commercial (Economics, Accounting, Commerce)',
+  'Teacher Resources: Lesson Notes & Schemes of Work',
+  'Teacher Resources: Exam Question Papers & Marking Guides',
+  'WAEC / NECO / JAMB Past Questions & Solutions',
   'Computer Science & Software Eng',
   'Economics, Accounting & Finance',
   'Law & Jurisprudence',
@@ -40,18 +50,22 @@ export const CATEGORIES = [
   'Mass Communication & Media',
   'Biochemistry & Microbiology',
   'Political Science & Sociology',
-  'General Studies (GST / General)',
+  'General Studies (GST / General Education)',
 ];
 
 export const LEVELS = [
-  'All Levels',
+  'All Educational Levels',
+  'Junior Secondary (JSS 1 - 3 / BECE)',
+  'Senior Secondary (SSS 1 - 3 / WAEC / NECO / JAMB)',
+  'Cambridge IGCSE / A-Levels / SAT',
+  'Teacher / Educator (Lesson Plans & Schemes)',
   '100L (Freshman)',
   '200L (Sophomore)',
   '300L (Penultimate)',
   '400L (Final Year)',
   '500L (Professional Final Year)',
-  'Postgraduate (Masters)',
-  'Doctorate (Ph.D)',
+  'Postgraduate (Masters / MBA)',
+  'Doctorate (Ph.D / Fellowship)',
 ];
 
 export const CITATION_STYLES = [

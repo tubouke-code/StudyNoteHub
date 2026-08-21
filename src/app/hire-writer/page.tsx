@@ -27,6 +27,24 @@ import { Profile } from '@/types/database.types';
 
 const SERVICES = [
   {
+    icon: '🎒',
+    title: 'Secondary School Projects, Assignments & WAEC/JAMB Prep',
+    desc: 'Holiday research projects, science practical workbooks, termly homework, essay competitions & WAEC/JAMB solutions.',
+    startingPrice: 3000,
+    unit: 'task',
+    badge: 'Secondary Tier',
+    href: '/hire-writer/new?service=coursework',
+  },
+  {
+    icon: '👩‍🏫',
+    title: 'Teacher Lesson Plans, 12-Week Notes & Marking Schemes',
+    desc: 'Curriculum-compliant termly schemes of work, detailed weekly lesson plans, continuous assessments & exam marking guides.',
+    startingPrice: 5000,
+    unit: 'curriculum',
+    badge: 'Educator Tier',
+    href: '/hire-writer/new?service=coursework',
+  },
+  {
     icon: '📚',
     title: 'Undergraduate Final Year Projects (B.Sc / HND)',
     desc: 'Complete Chapters 1 to 5: Introduction, Literature Review, Methodology, Data Analysis & Discussion.',
@@ -61,24 +79,6 @@ const SERVICES = [
     unit: 'add-on',
     badge: 'Field Sampling',
     href: '/hire-writer/new?service=project',
-  },
-  {
-    icon: '📈',
-    title: 'Empirical Data Analysis (SPSS, STATA, SmartPLS, R)',
-    desc: 'Multiple regression, ANOVA, econometric time-series modeling, reliability tests & descriptive tables.',
-    startingPrice: 12000,
-    unit: 'add-on',
-    badge: 'Specialized Analysis',
-    href: '/hire-writer/new?service=project',
-  },
-  {
-    icon: '📊',
-    title: 'Defense Slide Decks & Panel Scripts',
-    desc: 'Executive PowerPoint slides with clean data visualizations and word-for-word panel defense speaker notes.',
-    startingPrice: 6000,
-    unit: 'deck',
-    badge: 'Defense Ready',
-    href: '/hire-writer/new?service=slides',
   },
 ];
 

@@ -26,11 +26,12 @@ import { CATEGORIES, INSTITUTIONS, LEVELS } from '@/lib/constants';
 import { createClient } from '@/lib/supabase/client';
 
 const MATERIAL_TYPES = [
-  { id: 'lecture_note', name: 'Lecture Notes & Study Handouts', desc: 'Semester summaries & course outlines', icon: '📝' },
+  { id: 'lecture_note', name: 'Lecture Notes & Study Handouts', desc: 'University summaries, secondary subject notes & outlines', icon: '📝' },
+  { id: 'teacher_scheme', name: 'Teacher Lesson Plans & Schemes of Work', desc: 'Curriculum lesson plans, 12-week notes & term schemes', icon: '👩‍🏫' },
   { id: 'project_complete', name: 'Complete Final Year Project (Chapters 1-5)', desc: 'Full research work with questionnaires & methodology', icon: '📚' },
-  { id: 'past_questions', name: 'Solved Past Exam Questions', desc: 'Step-by-step solutions to university exams', icon: '🎯' },
-  { id: 'seminar_paper', name: 'Seminar Paper / Term Paper', desc: 'Detailed academic review paper', icon: '📑' },
-  { id: 'presentation_deck', name: 'PowerPoint Slide Defense Deck', desc: 'Defense slides with charts and speaker notes', icon: '📊' },
+  { id: 'past_questions', name: 'Solved Past Questions (WAEC / JAMB / Uni)', desc: 'Step-by-step solutions to national & university exams', icon: '🎯' },
+  { id: 'seminar_paper', name: 'Seminar Paper / Term Paper', desc: 'Detailed academic review paper or secondary term project', icon: '📑' },
+  { id: 'presentation_deck', name: 'PowerPoint Teaching / Defense Deck', desc: 'Classroom teaching slides or project defense decks', icon: '📊' },
 ];
 
 export default function UploadNotesPage() {

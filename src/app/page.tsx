@@ -87,11 +87,11 @@ export default function HomePage() {
 
           {/* Main Headline */}
           <h1 className="text-3xl sm:text-6xl font-black tracking-tight text-slate-900 leading-[1.15] max-w-4xl mx-auto">
-            The Academic Marketplace for <span className="text-primary-600">Study Notes</span> & Verified <span className="text-emerald-600">Escrow Projects</span>
+            The Academic Hub for <span className="text-primary-600">Students, Teachers</span> & <span className="text-emerald-600">Researchers</span>
           </h1>
 
           <p className="text-sm sm:text-lg text-slate-600 max-w-2xl mx-auto leading-relaxed">
-            Download syllabus-specific university notes, sell your academic work for 90% royalties, or hire verified PhD & Masters researchers with 100% money-back escrow protection.
+            Access secondary school WAEC/JAMB solutions, teacher curriculum lesson plans & schemes of work, university project notes, or hire verified researchers with 100% money-back escrow protection.
           </p>
 
           {/* Dual Action CTA Cards */}
@@ -109,10 +109,10 @@ export default function HomePage() {
               </div>
               <div>
                 <h3 className="text-lg font-bold text-slate-900 group-hover:text-primary-600 transition-colors">
-                  Browse & Sell Study Notes
+                  Study Notes & Teacher Resources
                 </h3>
                 <p className="text-xs text-slate-500 mt-1">
-                  Access lecture notes, past questions, and complete pre-written final year projects.
+                  Download secondary lesson notes, WAEC/JAMB solutions, teacher schemes of work, and university project materials.
                 </p>
               </div>
               <div className="flex items-center justify-between pt-2">
@@ -120,7 +120,7 @@ export default function HomePage() {
                   href="/notes"
                   className="inline-flex items-center gap-1.5 text-xs font-black text-primary-600 group-hover:translate-x-1 transition-transform"
                 >
-                  Explore Notes Catalog <ArrowRight className="w-3.5 h-3.5" />
+                  Explore Repository <ArrowRight className="w-3.5 h-3.5" />
                 </Link>
                 <Link
                   href="/notes/upload"
@@ -143,10 +143,10 @@ export default function HomePage() {
               </div>
               <div>
                 <h3 className="text-lg font-bold text-slate-900 group-hover:text-emerald-700 transition-colors">
-                  Hire Academic Writers & Analysts
+                  Hire Academic Writers & Tutors
                 </h3>
                 <p className="text-xs text-slate-500 mt-1">
-                  Order custom term papers, SPSS data analysis, theses, and defense presentation slides.
+                  Commission school assignments, teacher lesson note packs, undergraduate projects, and Ph.D dissertations.
                 </p>
               </div>
               <div className="flex items-center justify-between pt-2">
@@ -154,7 +154,7 @@ export default function HomePage() {
                   href="/hire-writer/new"
                   className="inline-flex items-center gap-1.5 text-xs font-black text-emerald-700 group-hover:translate-x-1 transition-transform"
                 >
-                  Order Custom Project <ArrowRight className="w-3.5 h-3.5" />
+                  Post Project for Bids <ArrowRight className="w-3.5 h-3.5" />
                 </Link>
                 <Link
                   href="/hire-writer"
