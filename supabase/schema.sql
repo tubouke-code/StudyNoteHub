@@ -321,15 +321,52 @@ DROP POLICY IF EXISTS "Users and admins update orders" ON public.orders;
 CREATE POLICY "Users and admins update orders" ON public.orders FOR UPDATE 
     USING (auth.uid() = client_id OR auth.uid() = writer_id OR public.is_admin());
 
--- Payout Requests Policies
-DROP POLICY IF EXISTS "Users view own payouts" ON public.payout_requests;
-CREATE POLICY "Users view own payouts" ON public.payout_requests FOR SELECT 
-    USING (auth.uid() = writer_id OR public.is_admin());
+-- 11. Project Bids (Sealed / Blind Bidding System)
+DO $$ BEGIN
+    CREATE TYPE bid_status AS ENUM ('PENDING', 'ACCEPTED', 'REJECTED', 'WITHDRAWN');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
-DROP POLICY IF EXISTS "Writers create payouts" ON public.payout_requests;
-CREATE POLICY "Writers create payouts" ON public.payout_requests FOR INSERT 
-    WITH CHECK (auth.uid() = writer_id OR public.is_admin());
+CREATE TABLE IF NOT EXISTS public.bids (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    order_id UUID NOT NULL REFERENCES public.orders(id) ON DELETE CASCADE,
+    writer_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    bid_amount NUMERIC(12, 2) NOT NULL,
+    delivery_days INT NOT NULL DEFAULT 7,
+    proposal_pitch TEXT NOT NULL,
+    status bid_status DEFAULT 'PENDING',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(order_id, writer_id)
+);
 
-DROP POLICY IF EXISTS "Admins update payouts" ON public.payout_requests;
-CREATE POLICY "Admins update payouts" ON public.payout_requests FOR UPDATE 
-    USING (public.is_admin());
+ALTER TABLE public.bids ENABLE ROW LEVEL SECURITY;
+
+-- SEALED BIDDING RLS POLICIES
+-- Hirer can view all bids on their project; Writers can ONLY view their own bid (blind bidding)
+DROP POLICY IF EXISTS "Sealed bids viewable by order client and owner writer" ON public.bids;
+CREATE POLICY "Sealed bids viewable by order client and owner writer" ON public.bids FOR SELECT
+    USING (
+        auth.uid() = writer_id
+        OR EXISTS (
+            SELECT 1 FROM public.orders 
+            WHERE orders.id = bids.order_id AND orders.client_id = auth.uid()
+        )
+        OR public.is_admin()
+    );
+
+DROP POLICY IF EXISTS "Writers can submit bids" ON public.bids;
+CREATE POLICY "Writers can submit bids" ON public.bids FOR INSERT
+    WITH CHECK (auth.uid() = writer_id);
+
+DROP POLICY IF EXISTS "Writers and clients can update bids" ON public.bids;
+CREATE POLICY "Writers and clients can update bids" ON public.bids FOR UPDATE
+    USING (
+        auth.uid() = writer_id
+        OR EXISTS (
+            SELECT 1 FROM public.orders 
+            WHERE orders.id = bids.order_id AND orders.client_id = auth.uid()
+        )
+        OR public.is_admin()
+    );

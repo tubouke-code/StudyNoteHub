@@ -36,6 +36,7 @@ export default function WriterDashboardPage() {
 
   const [assignedOrders, setAssignedOrders] = useState<OrderItem[]>([]);
   const [openJobs, setOpenJobs] = useState<OrderItem[]>([]);
+  const [myBids, setMyBids] = useState<Record<string, any>>({});
   const [isLoading, setIsLoading] = useState(true);
 
   // Check if user is a verified writer or admin
@@ -61,13 +62,28 @@ export default function WriterDashboardPage() {
           if (assigned) {
             setAssignedOrders(assigned as OrderItem[]);
           }
+
+          // Fetch bids submitted by this writer
+          const { data: bidsData } = await supabase
+            .from('bids')
+            .select('*')
+            .eq('writer_id', user.id);
+
+          if (bidsData) {
+            const bidsMap: Record<string, any> = {};
+            bidsData.forEach((b: any) => {
+              bidsMap[b.order_id] = b;
+            });
+            setMyBids(bidsMap);
+          }
         }
 
-        // 2. Fetch open unassigned jobs
+        // 2. Fetch open unassigned jobs for bidding
         const { data: open } = await supabase
           .from('orders')
           .select('*, client:profiles!orders_client_id_fkey(*)')
-          .eq('status', 'PENDING')
+          .in('status', ['OPEN', 'PENDING'])
+          .is('writer_id', null)
           .order('created_at', { ascending: false });
 
         if (open) {
@@ -262,29 +278,43 @@ export default function WriterDashboardPage() {
                 </div>
               ) : (
                 <div className="divide-y divide-slate-100">
-                  {openJobs.map((job) => (
-                    <div key={job.id} className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-indigo-100 text-indigo-800">
-                            {job.service_type}
-                          </span>
-                          <span className="text-xs text-slate-400">{job.academic_level}</span>
+                  {openJobs.map((job) => {
+                    const userBid = myBids[job.id];
+                    return (
+                      <div key={job.id} className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-indigo-100 text-indigo-800">
+                              {job.service_type}
+                            </span>
+                            <span className="text-xs font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded">
+                              {job.academic_level}
+                            </span>
+                            {userBid && (
+                              <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                ✓ Bid Placed: {formatCurrency(userBid.bid_amount)} (Sealed)
+                              </span>
+                            )}
+                          </div>
+                          <h4 className="text-sm font-bold text-slate-900">{job.title}</h4>
+                          <p className="text-xs text-slate-500">
+                            Subject: {job.subject_area} • Citation: {job.citation_style} • Guide Budget: {formatCurrency(job.budget)}
+                          </p>
                         </div>
-                        <h4 className="text-sm font-bold text-slate-900">{job.title}</h4>
-                        <p className="text-xs text-slate-500">
-                          {job.pages_count} units • Citation: {job.citation_style} • Escrow: {formatCurrency(job.budget)}
-                        </p>
-                      </div>
 
-                      <Link
-                        href={`/hire-writer/orders/${job.id}`}
-                        className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-1 shrink-0"
-                      >
-                        View & Bid <ChevronRight className="w-3.5 h-3.5" />
-                      </Link>
-                    </div>
-                  ))}
+                        <Link
+                          href={`/hire-writer/orders/${job.id}`}
+                          className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1 shrink-0 transition-colors ${
+                            userBid 
+                              ? 'bg-emerald-700 hover:bg-emerald-800 text-white'
+                              : 'bg-slate-900 hover:bg-slate-800 text-white'
+                          }`}
+                        >
+                          {userBid ? 'Review My Bid' : 'Place Sealed Bid'} <ChevronRight className="w-3.5 h-3.5" />
+                        </Link>
+                      </div>
+                    );
+                  })}
                 </div>
               )
             )}

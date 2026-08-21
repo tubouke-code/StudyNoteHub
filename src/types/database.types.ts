@@ -1,7 +1,7 @@
 export type UserRole = 'STUDENT' | 'WRITER' | 'ADMIN';
 export type AdminPermission = 'SUPER_ADMIN' | 'DISPUTE_MANAGER' | 'CONTENT_MODERATOR' | 'FINANCE_AUDITOR';
 export type DocStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
-export type OrderStatus = 'OPEN' | 'ASSIGNED' | 'IN_PROGRESS' | 'IN_REVIEW' | 'DISPUTED' | 'COMPLETED' | 'CANCELLED';
+export type OrderStatus = 'OPEN' | 'PENDING' | 'ASSIGNED' | 'IN_PROGRESS' | 'IN_REVIEW' | 'DISPUTED' | 'COMPLETED' | 'CANCELLED';
 export type EscrowStatus = 'UNPAID' | 'HELD_IN_ESCROW' | 'RELEASED_TO_WRITER' | 'REFUNDED_TO_STUDENT' | 'DISPUTE_HOLD';
 export type PaymentGateway = 'PAYSTACK' | 'FLUTTERWAVE' | 'WALLET';
 export type TxnType = 'WALLET_DEPOSIT' | 'NOTE_PURCHASE' | 'NOTE_SALE_ROYALTY' | 'ESCROW_LOCK' | 'ESCROW_PAYOUT' | 'PLATFORM_FEE' | 'WITHDRAWAL' | 'REFUND';
@@ -75,7 +75,9 @@ export interface DocumentPurchase {
 
 export interface OrderItem {
   id: string;
-  student_id: string;
+  student_id?: string;
+  client_id?: string;
+  client?: Profile;
   student?: Profile;
   writer_id?: string;
   writer?: Profile;
@@ -90,7 +92,7 @@ export interface OrderItem {
   instructions: string;
   attachment_paths?: string[];
   budget: number;
-  platform_fee: number;
+  platform_fee?: number;
   status: OrderStatus;
   escrow_status: EscrowStatus;
   dispute_reason?: string;
@@ -144,4 +146,20 @@ export interface PayoutRequest {
   status: PayoutStatus;
   admin_notes?: string;
   created_at: string;
+}
+
+export type BidStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'WITHDRAWN';
+
+export interface BidItem {
+  id: string;
+  order_id: string;
+  order?: OrderItem;
+  writer_id: string;
+  writer?: Profile;
+  bid_amount: number;
+  delivery_days: number;
+  proposal_pitch: string;
+  status: BidStatus;
+  created_at: string;
+  updated_at?: string;
 }

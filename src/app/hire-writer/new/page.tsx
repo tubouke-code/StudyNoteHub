@@ -207,41 +207,45 @@ function OrderWizardContent() {
     );
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isLoggedIn) {
+    if (!isLoggedIn || !user) {
       router.push('/login?redirect=/hire-writer/new');
       return;
     }
-    setShowPaymentModal(true);
-  };
 
-  const handlePaymentSuccess = async () => {
-    setShowPaymentModal(false);
     try {
-      if (user) {
-        const supabase = createClient();
-        const { data: newOrder, error } = await supabase.from('orders').insert({
-          client_id: user.id,
-          writer_id: assignedWriterId || null,
-          title: title || `${selectedServiceObj.name} (${selectedLevelObj.shortLabel})`,
-          service_type: selectedServiceObj.name,
-          subject_area: subjectArea || 'General Academic',
-          academic_level: selectedLevelObj.name,
-          pages_count: 1, // Fixed Project Model
-          word_count: serviceType === 'project' ? 12000 : 3500,
-          deadline: new Date(Date.now() + (urgency === 'emergency' ? 1 : urgency === 'urgent' ? 2 : 7) * 24 * 60 * 60 * 1000).toISOString(),
-          citation_style: citationStyle,
-          instructions: `${instructions || 'Standard academic guidelines and research.'}\n\n[Add-ons]: ${selectedAddons.join(', ') || 'None'}`,
-          budget: totalBudget,
-          escrow_status: 'HELD_IN_ESCROW',
-          status: 'PENDING',
-        }).select().single();
+      const supabase = createClient();
+      
+      // Ensure user profile exists
+      await supabase.from('profiles').upsert({
+        id: user.id,
+        email: user.email,
+        full_name: user.full_name || user.email.split('@')[0],
+        role: user.role || 'STUDENT',
+        is_email_verified: true,
+      }, { onConflict: 'id' });
 
-        if (newOrder) {
-          router.push(`/hire-writer/orders/${newOrder.id}`);
-          return;
-        }
+      const { data: newOrder, error } = await supabase.from('orders').insert({
+        client_id: user.id,
+        writer_id: assignedWriterId || null,
+        title: title.trim() || `${selectedServiceObj.name} (${selectedLevelObj.shortLabel})`,
+        service_type: selectedServiceObj.name,
+        subject_area: subjectArea.trim() || 'General Academic',
+        academic_level: selectedLevelObj.name,
+        pages_count: 1,
+        word_count: serviceType === 'project' ? 12000 : 3500,
+        deadline: new Date(Date.now() + (urgency === 'emergency' ? 1 : urgency === 'urgent' ? 2 : 7) * 24 * 60 * 60 * 1000).toISOString(),
+        citation_style: citationStyle,
+        instructions: `${instructions.trim() || 'Standard academic guidelines and research.'}\n\n[Required Add-ons]: ${selectedAddons.length > 0 ? selectedAddons.join(', ') : 'None'}`,
+        budget: totalBudget, // Estimated/Guide Budget
+        escrow_status: 'UNPAID',
+        status: 'OPEN',
+      }).select().single();
+
+      if (newOrder) {
+        router.push(`/hire-writer/orders/${newOrder.id}`);
+        return;
       }
     } catch (err) {
       console.error('Error creating order in Supabase:', err);
@@ -574,31 +578,21 @@ function OrderWizardContent() {
               type="submit"
               className="w-full py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm shadow-lg shadow-emerald-600/30 transition-all flex items-center justify-center gap-2 cursor-pointer"
             >
-              <Lock className="w-4 h-4" />
-              Deposit {formatCurrency(totalBudget)} & Lock Escrow
+              <PenTool className="w-4 h-4" />
+              Post Project for Writer Bids (Free to Post)
               <ArrowRight className="w-4 h-4" />
             </button>
 
             <div className="flex items-center justify-center gap-3 text-[11px] text-slate-400 font-semibold">
-              <span>⚡ Verified Researchers</span>
+              <span>⚡ Verified PhD & Masters Bidders</span>
               <span>•</span>
-              <span>🔒 Paystack & Flutterwave</span>
+              <span>🔒 Sealed Bidding Privacy</span>
             </div>
 
           </div>
         </div>
 
       </form>
-
-      {/* Checkout Modal */}
-      <PaymentModal
-        isOpen={showPaymentModal}
-        onClose={() => setShowPaymentModal(false)}
-        title={title || `Commission ${selectedServiceObj.name}`}
-        amount={totalBudget}
-        itemType="ESCROW_FUNDING"
-        onSuccess={handlePaymentSuccess}
-      />
     </div>
   );
 }
