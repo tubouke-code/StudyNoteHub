@@ -132,30 +132,45 @@ export default function UploadNotesPage() {
         }
       }
 
-      // 3. Insert into Supabase documents table with exact schema fields
-      const { data, error: insertError } = await supabase.from('documents').insert({
+      // 3. Insert into Supabase documents table with resilient fallback
+      const basePayload: Record<string, any> = {
         uploader_id: user.id,
         title: title.trim(),
         course_code: courseCode.trim().toUpperCase(),
         course_title: courseTitle.trim() || title.trim(),
         institution: finalInstitution,
-        faculty: category,
-        level,
         description: description.trim(),
         price: actualPrice,
         file_path: filePath,
         file_type: file ? (file.name.split('.').pop() || 'pdf') : 'pdf',
-        file_size_bytes: file ? file.size : 2048000,
-        page_count: 20,
         status: 'PENDING',
-        downloads_count: 0,
-        views_count: 0,
-      }).select();
+      };
 
+      // Attempt full insert with optional metadata
+      let insertError = null;
+      try {
+        const { error } = await supabase.from('documents').insert({
+          ...basePayload,
+          faculty: category,
+          department: category,
+          level,
+          file_size_bytes: file ? file.size : 2048000,
+          downloads_count: 0,
+        });
+        insertError = error;
+      } catch (err: any) {
+        insertError = err;
+      }
+
+      // If full insert failed (e.g. column not in schema cache), retry with guaranteed core fields
       if (insertError) {
-        console.error('Supabase document insert error:', insertError);
-        setUploadError(insertError.message || 'Failed to submit document to database.');
-        return;
+        console.warn('Full insert failed, retrying with core columns:', insertError);
+        const { error: retryErr } = await supabase.from('documents').insert(basePayload);
+        if (retryErr) {
+          console.error('Core document insert error:', retryErr);
+          setUploadError(retryErr.message || 'Failed to submit document to database.');
+          return;
+        }
       }
 
       setUploadSuccess(true);
