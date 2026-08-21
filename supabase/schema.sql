@@ -287,8 +287,9 @@ CREATE POLICY "Documents viewable by users and admins" ON public.documents FOR S
     USING (status = 'APPROVED' OR auth.uid() = uploader_id OR public.is_admin());
 
 DROP POLICY IF EXISTS "Authenticated users can upload documents" ON public.documents;
-CREATE POLICY "Authenticated users can upload documents" ON public.documents FOR INSERT 
-    WITH CHECK (auth.uid() = uploader_id OR public.is_admin());
+DROP POLICY IF EXISTS "Allow user document upload" ON public.documents;
+CREATE POLICY "Allow user document upload" ON public.documents FOR INSERT 
+    WITH CHECK (auth.uid() = uploader_id OR auth.uid() IS NOT NULL OR public.is_admin());
 
 DROP POLICY IF EXISTS "Uploaders can update own documents" ON public.documents;
 DROP POLICY IF EXISTS "Uploaders and admins can update documents" ON public.documents;

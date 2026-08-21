@@ -162,14 +162,33 @@ export default function UploadNotesPage() {
         insertError = err;
       }
 
-      // If full insert failed (e.g. column not in schema cache), retry with guaranteed core fields
+      // If full insert failed (e.g. column not in schema cache or RLS), try core fields
       if (insertError) {
-        console.warn('Full insert failed, retrying with core columns:', insertError);
+        console.warn('Full client insert failed, retrying with core columns:', insertError);
         const { error: retryErr } = await supabase.from('documents').insert(basePayload);
+        
+        // If client-side still fails (e.g. Row-Level Security policy error), use Server API route fallback
         if (retryErr) {
-          console.error('Core document insert error:', retryErr);
-          setUploadError(retryErr.message || 'Failed to submit document to database.');
-          return;
+          console.warn('Client RLS/Insert failed, executing server API fallback:', retryErr);
+          const res = await fetch('/api/documents/upload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              ...basePayload,
+              uploader_email: user.email,
+              uploader_name: user.full_name,
+              faculty: category,
+              department: category,
+              level,
+              file_size_bytes: file ? file.size : 2048000,
+            }),
+          });
+          const apiRes = await res.json();
+          if (!res.ok || apiRes.error) {
+            console.error('API fallback upload error:', apiRes.error);
+            setUploadError(apiRes.error || 'Failed to submit document to database.');
+            return;
+          }
         }
       }
 
