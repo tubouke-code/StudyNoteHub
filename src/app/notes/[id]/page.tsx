@@ -25,7 +25,7 @@ import {
   Loader2,
   AlertCircle
 } from 'lucide-react';
-import { formatCurrency, formatFileSize, formatDate } from '@/lib/utils';
+import { formatCurrency, formatFileSize, formatDate, getDocumentFileUrl } from '@/lib/utils';
 import { PaymentModal } from '@/components/payments/PaymentModal';
 import { useAuth } from '@/context/AuthContext';
 import { createClient } from '@/lib/supabase/client';
@@ -52,25 +52,51 @@ export default function NoteDetailPage() {
 
   useEffect(() => {
     async function loadDocument() {
+      if (!noteId) {
+        setIsLoading(false);
+        return;
+      }
       try {
         const supabase = createClient();
-        const { data, error } = await supabase
+        
+        // 1. Try with joined uploader profile
+        const { data: docData, error: docErr } = await supabase
           .from('documents')
           .select('*, uploader:profiles(*)')
           .eq('id', noteId)
-          .single();
+          .maybeSingle();
 
-        if (data) {
-          const doc = data as DocumentItem;
+        if (docData) {
+          const doc = docData as DocumentItem;
           setNote(doc);
           const free = Number(doc.price) === 0;
-          setIsUnlocked(free);
+          setIsUnlocked(free || user?.role === 'ADMIN' || doc.uploader_id === user?.id);
           setAiChatMessages([
             {
               role: 'assistant',
               text: `Hello! I am your AI Study Tutor for **"${doc.title}"**. Ask me any question, request a summary, or let me generate exam practice questions from this material!`,
             },
           ]);
+        } else {
+          // 2. Fallback to raw document select without join
+          const { data: rawDoc } = await supabase
+            .from('documents')
+            .select('*')
+            .eq('id', noteId)
+            .maybeSingle();
+
+          if (rawDoc) {
+            const doc = rawDoc as DocumentItem;
+            setNote(doc);
+            const free = Number(doc.price) === 0;
+            setIsUnlocked(free || user?.role === 'ADMIN' || doc.uploader_id === user?.id);
+            setAiChatMessages([
+              {
+                role: 'assistant',
+                text: `Hello! I am your AI Study Tutor for **"${doc.title}"**. Ask me any question, request a summary, or let me generate exam practice questions from this material!`,
+              },
+            ]);
+          }
         }
       } catch (err) {
         console.error('Error fetching document:', err);
@@ -79,10 +105,8 @@ export default function NoteDetailPage() {
       }
     }
 
-    if (noteId) {
-      loadDocument();
-    }
-  }, [noteId]);
+    loadDocument();
+  }, [noteId, user]);
 
   const handleAskAi = (e: React.FormEvent) => {
     e.preventDefault();
@@ -111,13 +135,10 @@ export default function NoteDetailPage() {
       setIsPaymentModalOpen(true);
       return;
     }
-    // Stream or trigger file download
-    const link = document.createElement('a');
-    link.href = note.file_path || '#';
-    link.download = `${note.course_code}_${note.title}.pdf`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const fileUrl = getDocumentFileUrl(note.file_path);
+    if (fileUrl && fileUrl !== '#') {
+      window.open(fileUrl, '_blank');
+    }
   };
 
   const handleShare = () => {
@@ -158,6 +179,9 @@ export default function NoteDetailPage() {
   }
 
   const isFree = Number(note.price) === 0;
+  const pageCount = note.page_count || (note as any).pages_count || 12;
+  const fileSize = formatFileSize(note.file_size_bytes || 2048000);
+  const fileUrl = getDocumentFileUrl(note.file_path);
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
@@ -168,8 +192,30 @@ export default function NoteDetailPage() {
         className="inline-flex items-center gap-2 text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors"
       >
         <ArrowLeft className="w-4 h-4" />
-        Back to Materials
+        Back
       </button>
+
+      {/* Pending Banner if viewing in moderation preview */}
+      {note.status === 'PENDING' && (
+        <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2.5">
+            <span className="text-xs font-extrabold uppercase bg-amber-200/80 px-2.5 py-0.5 rounded-full text-amber-900">
+              Moderation Preview
+            </span>
+            <span className="text-xs">This material is currently in the admin moderation queue awaiting public approval.</span>
+          </div>
+          {fileUrl && fileUrl !== '#' && (
+            <a
+              href={fileUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shrink-0 transition-colors"
+            >
+              Open Original File
+            </a>
+          )}
+        </div>
+      )}
 
       {/* Note Header Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -222,7 +268,7 @@ export default function NoteDetailPage() {
               <span>•</span>
               <div className="flex items-center gap-1">
                 <FileText className="w-4 h-4 text-slate-400" />
-                <span>{note.page_count} Pages ({formatFileSize(note.file_size_bytes)})</span>
+                <span>{pageCount} Pages ({fileSize})</span>
               </div>
             </div>
           </div>
@@ -276,7 +322,7 @@ export default function NoteDetailPage() {
               {/* Sample Document Page 1 */}
               <div className="space-y-4 border-b border-slate-100 pb-6">
                 <div className="flex items-center justify-between text-xs text-slate-400">
-                  <span>Page 1 of {note.page_count}</span>
+                  <span>Page 1 of {pageCount}</span>
                   <span className="text-emerald-600 font-bold">✓ Verified Author Notes</span>
                 </div>
                 <div className="space-y-2 text-xs sm:text-sm text-slate-800 leading-relaxed font-serif">
@@ -305,7 +351,7 @@ export default function NoteDetailPage() {
                       <Lock className="w-6 h-6" />
                     </div>
                     <div>
-                      <h4 className="text-base font-bold text-slate-900">Unlock the Full {note.page_count}-Page Document</h4>
+                      <h4 className="text-base font-bold text-slate-900">Unlock the Full {pageCount}-Page Document</h4>
                       <p className="text-xs text-slate-500 max-w-sm">
                         Get instant lifetime access to all solved past questions, diagrams, and formulas.
                       </p>
@@ -322,12 +368,16 @@ export default function NoteDetailPage() {
               ) : (
                 <div className="p-4 rounded-2xl bg-emerald-50 text-emerald-900 text-xs font-semibold flex items-center justify-between">
                   <span>✓ You own this material. You can download and read anytime.</span>
-                  <button
-                    onClick={handleDownload}
-                    className="px-3.5 py-1.5 rounded-lg bg-emerald-600 text-white font-bold text-xs flex items-center gap-1"
-                  >
-                    <Download className="w-3.5 h-3.5" /> Download PDF
-                  </button>
+                  {fileUrl && fileUrl !== '#' && (
+                    <a
+                      href={fileUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1 transition-colors"
+                    >
+                      <Download className="w-3.5 h-3.5" /> Download File
+                    </a>
+                  )}
                 </div>
               )}
 

@@ -24,6 +24,16 @@ export function getAppURL(): string {
   return url.replace(/\/$/, '');
 }
 
+export function getDocumentFileUrl(filePath?: string | null): string {
+  if (!filePath || filePath === '#') return '#';
+  if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
+    return filePath;
+  }
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://zisulmxcdhrsiyqyrfpf.supabase.co';
+  const cleanPath = filePath.replace(/^documents\//, '').replace(/^\//, '');
+  return `${supabaseUrl}/storage/v1/object/public/documents/${cleanPath}`;
+}
+
 export function formatCurrency(amount: number, currency: string = "NGN"): string {
   if (currency === "NGN") {
     return new Intl.NumberFormat("en-NG", {

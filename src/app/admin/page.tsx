@@ -18,6 +18,7 @@ import {
   UserCheck, 
   UserX,
   ExternalLink,
+  Eye,
   Sparkles,
   Award,
   RefreshCw,
@@ -33,7 +34,7 @@ import {
   Trash2
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import { formatCurrency, formatDate } from '@/lib/utils';
+import { formatCurrency, formatDate, getDocumentFileUrl } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
 import { DocumentItem, OrderItem, Profile, PayoutRequest } from '@/types/database.types';
 import { RoleGuard } from '@/components/layout/RoleGuard';
@@ -1016,17 +1017,24 @@ export default function AdminPortalPage() {
                               <span>•</span>
                               <span>{formatDate(note.created_at)}</span>
                               <span>•</span>
-                              {note.file_path ? (
-                                <a 
-                                  href={note.file_path}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-indigo-600 hover:text-indigo-800 flex items-center gap-1 font-bold bg-indigo-50 hover:bg-indigo-100 px-2.5 py-0.5 rounded-md transition-colors"
-                                >
-                                  <ExternalLink className="w-3 h-3" /> View / Download File
-                                </a>
-                              ) : (
-                                <span className="text-slate-400 text-[11px]">No file URL</span>
+                              <Link 
+                                href={`/notes/${note.id}`}
+                                className="text-indigo-600 hover:text-indigo-800 flex items-center gap-1 font-bold bg-indigo-50 hover:bg-indigo-100 px-2.5 py-0.5 rounded-md transition-colors"
+                              >
+                                <Eye className="w-3 h-3" /> Preview Note Page
+                              </Link>
+                              {note.file_path && (
+                                <>
+                                  <span>•</span>
+                                  <a 
+                                    href={getDocumentFileUrl(note.file_path)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-slate-600 hover:text-slate-900 flex items-center gap-1 font-semibold bg-slate-100 hover:bg-slate-200 px-2.5 py-0.5 rounded-md transition-colors"
+                                  >
+                                    <ExternalLink className="w-3 h-3" /> View Raw File
+                                  </a>
+                                </>
                               )}
                             </div>
                           </div>
