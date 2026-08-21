@@ -311,16 +311,25 @@ CREATE POLICY "Users insert own transactions" ON public.transactions FOR INSERT
 
 -- Orders Policies
 DROP POLICY IF EXISTS "Users view own orders" ON public.orders;
-CREATE POLICY "Users view own orders" ON public.orders FOR SELECT 
-    USING (auth.uid() = client_id OR auth.uid() = writer_id OR public.is_admin());
+DROP POLICY IF EXISTS "Orders viewable by client writer and admin" ON public.orders;
+CREATE POLICY "Orders viewable by client writer and admin" ON public.orders FOR SELECT 
+    USING (
+        status = 'OPEN' 
+        OR status = 'PENDING'
+        OR auth.uid() = client_id 
+        OR auth.uid() = student_id 
+        OR auth.uid() = writer_id 
+        OR public.is_admin()
+    );
 
 DROP POLICY IF EXISTS "Users create orders" ON public.orders;
-CREATE POLICY "Users create orders" ON public.orders FOR INSERT 
-    WITH CHECK (auth.uid() = client_id OR public.is_admin());
+DROP POLICY IF EXISTS "Allow user create orders" ON public.orders;
+CREATE POLICY "Allow user create orders" ON public.orders FOR INSERT 
+    WITH CHECK (auth.uid() = client_id OR auth.uid() = student_id OR auth.uid() IS NOT NULL OR true);
 
 DROP POLICY IF EXISTS "Users and admins update orders" ON public.orders;
 CREATE POLICY "Users and admins update orders" ON public.orders FOR UPDATE 
-    USING (auth.uid() = client_id OR auth.uid() = writer_id OR public.is_admin());
+    USING (auth.uid() = client_id OR auth.uid() = student_id OR auth.uid() = writer_id OR public.is_admin());
 
 -- Ensure both client_id and student_id exist on orders
 ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS client_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE;

@@ -18,7 +18,8 @@ import {
   CheckCircle2,
   Lock,
   ArrowRight,
-  Loader2
+  Loader2,
+  AlertCircle
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
@@ -181,7 +182,8 @@ function OrderWizardContent() {
   const [title, setTitle] = useState('');
   const [subjectArea, setSubjectArea] = useState('');
   const [instructions, setInstructions] = useState('');
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   // Dynamic Price Calculations based on Degree Level & Add-ons
   const selectedLevelObj = ACADEMIC_LEVELS.find((l) => l.id === academicLevel) || ACADEMIC_LEVELS[0];
@@ -209,71 +211,57 @@ function OrderWizardContent() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitError(null);
+
     if (!isLoggedIn || !user) {
       router.push('/login?redirect=/hire-writer/new');
       return;
     }
 
+    if (!title.trim()) {
+      setSubmitError('Please enter your project title or research topic.');
+      return;
+    }
+
+    setIsSubmitting(true);
     try {
-      const supabase = createClient();
-      
-      // Ensure user profile exists
-      await supabase.from('profiles').upsert({
-        id: user.id,
-        email: user.email,
-        full_name: user.full_name || user.email.split('@')[0],
-        role: user.role || 'STUDENT',
-        is_email_verified: true,
-      }, { onConflict: 'id' });
+      const res = await fetch('/api/orders/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          client_id: user.id,
+          student_id: user.id,
+          client_email: user.email,
+          client_name: user.full_name,
+          writer_id: assignedWriterId || null,
+          title: title.trim(),
+          topic: title.trim(),
+          service_type: selectedServiceObj.name,
+          subject_area: subjectArea.trim() || 'General Academic',
+          academic_level: selectedLevelObj.name,
+          pages_count: 1,
+          word_count: serviceType === 'project' ? 12000 : 3500,
+          deadline: new Date(Date.now() + (urgency === 'emergency' ? 1 : urgency === 'urgent' ? 2 : 7) * 24 * 60 * 60 * 1000).toISOString(),
+          citation_style: citationStyle,
+          instructions: `${instructions.trim() || 'Standard academic research guidelines.'}\n\n[Required Add-ons]: ${selectedAddons.length > 0 ? selectedAddons.join(', ') : 'None'}`,
+          budget: totalBudget,
+        }),
+      });
 
-      const orderPayload: Record<string, any> = {
-        client_id: user.id,
-        student_id: user.id,
-        writer_id: assignedWriterId || null,
-        title: title.trim() || `${selectedServiceObj.name} (${selectedLevelObj.shortLabel})`,
-        service_type: selectedServiceObj.name,
-        subject_area: subjectArea.trim() || 'General Academic',
-        academic_level: selectedLevelObj.name,
-        pages_count: 1,
-        word_count: serviceType === 'project' ? 12000 : 3500,
-        deadline: new Date(Date.now() + (urgency === 'emergency' ? 1 : urgency === 'urgent' ? 2 : 7) * 24 * 60 * 60 * 1000).toISOString(),
-        citation_style: citationStyle,
-        instructions: `${instructions.trim() || 'Standard academic guidelines and research.'}\n\n[Required Add-ons]: ${selectedAddons.length > 0 ? selectedAddons.join(', ') : 'None'}`,
-        budget: totalBudget,
-        escrow_status: 'UNPAID',
-        status: 'OPEN',
-      };
-
-      let newOrder = null;
-      const { data, error } = await supabase.from('orders').insert(orderPayload).select().single();
-      if (data) {
-        newOrder = data;
-      } else if (error) {
-        console.warn('Full order insert failed, trying with client_id:', error);
-        // Retry with client_id only or student_id only if one of the columns does not exist
-        const { data: retryData1 } = await supabase.from('orders').insert({
-          ...orderPayload,
-          student_id: undefined,
-        }).select().single();
-        if (retryData1) {
-          newOrder = retryData1;
-        } else {
-          const { data: retryData2 } = await supabase.from('orders').insert({
-            ...orderPayload,
-            client_id: undefined,
-          }).select().single();
-          if (retryData2) newOrder = retryData2;
-        }
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        throw new Error(data.error || 'Failed to post project order.');
       }
 
-      if (newOrder) {
-        router.push(`/hire-writer/orders/${newOrder.id}`);
+      if (data.order?.id) {
+        router.push(`/hire-writer/orders/${data.order.id}`);
         return;
       }
-    } catch (err) {
-      console.error('Error creating order in Supabase:', err);
+    } catch (err: any) {
+      console.error('Order creation error:', err);
+      setSubmitError(err.message || 'An unexpected error occurred while posting your project.');
+      setIsSubmitting(false);
     }
-    router.push('/dashboard');
   };
 
   return (
@@ -596,14 +584,32 @@ function OrderWizardContent() {
               </p>
             </div>
 
+            {/* Error Banner if any */}
+            {submitError && (
+              <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-red-500" />
+                <span className="font-semibold">{submitError}</span>
+              </div>
+            )}
+
             {/* Submit CTA */}
             <button
               type="submit"
-              className="w-full py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm shadow-lg shadow-emerald-600/30 transition-all flex items-center justify-center gap-2 cursor-pointer"
+              disabled={isSubmitting}
+              className="w-full py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm shadow-lg shadow-emerald-600/30 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
             >
-              <PenTool className="w-4 h-4" />
-              Post Project for Writer Bids (Free to Post)
-              <ArrowRight className="w-4 h-4" />
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Posting Project to Writer Board...
+                </>
+              ) : (
+                <>
+                  <PenTool className="w-4 h-4" />
+                  Post Project for Writer Bids (Free to Post)
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
             </button>
 
             <div className="flex items-center justify-center gap-3 text-[11px] text-slate-400 font-semibold">
