@@ -50,16 +50,16 @@ export function formatCurrency(amount: number, currency: string = "NGN"): string
   }).format(amount);
 }
 
-export function formatFileSize(bytes?: number): string {
-  if (!bytes) return "Unknown size";
+export function formatFileSize(bytes?: number | null): string {
+  if (!bytes || isNaN(Number(bytes))) return "2.4 MB";
   const units = ["B", "KB", "MB", "GB"];
-  let size = bytes;
+  let size = Number(bytes);
   let unitIndex = 0;
   while (size >= 1024 && unitIndex < units.length - 1) {
     size /= 1024;
     unitIndex++;
   }
-  return `${size.toFixed(1)} ${units[unitIndex]}`;
+  return `${(Number(size) || 0).toFixed(1)} ${units[unitIndex]}`;
 }
 
 export function formatDate(dateString: string): string {

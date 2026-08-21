@@ -696,7 +696,7 @@ export default function AdminPortalPage() {
                             </defs>
                             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                             <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#94a3b8' }} />
-                            <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} tickFormatter={(v) => `₦${(v / 1000).toFixed(0)}k`} />
+                            <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} tickFormatter={(v) => typeof v === 'number' && !isNaN(v) ? `₦${(v / 1000).toFixed(0)}k` : '₦0'} />
                             <Tooltip content={<CustomTooltip />} />
                             <Area type="monotone" dataKey="volume" name="Transaction Volume" stroke={CHART_COLORS.emerald} fill="url(#colorVol)" strokeWidth={2} />
                             <Area type="monotone" dataKey="revenue" name="Platform Revenue" stroke={CHART_COLORS.indigo} fill="url(#colorRev)" strokeWidth={2} />

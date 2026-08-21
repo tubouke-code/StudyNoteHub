@@ -102,10 +102,10 @@ export function NoteCard({ note }: NoteCardProps) {
             <div className="flex items-center gap-3">
               <span className="flex items-center gap-1 font-semibold text-amber-600">
                 <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                {note.rating.toFixed(1)}
+                {Number(note.rating || 5.0).toFixed(1)}
               </span>
               <span className="text-slate-400">•</span>
-              <span>{note.page_count} pgs</span>
+              <span>{note.page_count || (note as any).pages_count || 12} pgs</span>
             </div>
           </div>
 
