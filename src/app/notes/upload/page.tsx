@@ -93,6 +93,10 @@ export default function UploadNotesPage() {
 
     setIsUploading(true);
     try {
+      const supabase = createClient();
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData?.session?.access_token || '';
+
       // Build FormData with the actual uploaded binary file (PDF, DOCX, DOC, PPTX, TXT, etc.)
       const formData = new FormData();
       if (file) {
@@ -107,12 +111,19 @@ export default function UploadNotesPage() {
       formData.append('uploader_id', user.id);
       formData.append('uploader_email', user.email || '');
       formData.append('uploader_name', user.full_name || '');
+      formData.append('uploader_token', accessToken);
       formData.append('faculty', category);
       formData.append('department', category);
       formData.append('level', level);
 
+      const headers: Record<string, string> = {};
+      if (accessToken) {
+        headers['Authorization'] = `Bearer ${accessToken}`;
+      }
+
       const res = await fetch('/api/documents/upload', {
         method: 'POST',
+        headers,
         body: formData,
       });
 

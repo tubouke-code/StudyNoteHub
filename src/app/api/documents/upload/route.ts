@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
+import { createClient } from '@supabase/supabase-js';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -17,6 +18,7 @@ export async function POST(req: Request) {
     const uploaderId = (formData.get('uploader_id') as string) || '';
     const uploaderEmail = (formData.get('uploader_email') as string) || '';
     const uploaderName = (formData.get('uploader_name') as string) || '';
+    const uploaderToken = (formData.get('uploader_token') as string) || '';
     const faculty = (formData.get('faculty') as string) || '';
     const department = (formData.get('department') as string) || '';
     const level = (formData.get('level') as string) || '';
@@ -25,11 +27,31 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Missing required title, course code or institution' }, { status: 400 });
     }
 
-    const supabase = createAdminClient();
+    const authHeader = req.headers.get('authorization') || '';
+    const bearerToken = authHeader.replace(/^Bearer\s+/i, '').trim() || uploaderToken;
+
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+
+    // Initialize authenticated client if user token exists, otherwise admin client
+    let supabase = createAdminClient();
+    if (bearerToken) {
+      try {
+        supabase = createClient(supabaseUrl, supabaseAnonKey, {
+          global: {
+            headers: { Authorization: `Bearer ${bearerToken}` },
+          },
+          auth: { persistSession: false },
+        });
+      } catch (authErr) {
+        console.warn('Authenticated client creation notice, falling back to admin:', authErr);
+      }
+    }
 
     // 1. Ensure uploader profile exists in profiles table
     if (uploaderId) {
-      await supabase.from('profiles').upsert({
+      const adminClient = createAdminClient();
+      await adminClient.from('profiles').upsert({
         id: uploaderId,
         email: uploaderEmail || 'writer@studynotehub.com',
         full_name: uploaderName || 'Academic Contributor',
@@ -57,7 +79,8 @@ export async function POST(req: Request) {
       // A. Try saving to Supabase Storage Bucket
       let storageUploaded = false;
       try {
-        const { error: storageErr } = await supabase.storage
+        const adminStorage = createAdminClient();
+        const { error: storageErr } = await adminStorage.storage
           .from('documents')
           .upload(uniqueFileName, buffer, {
             contentType: file.type || 'application/octet-stream',
@@ -66,7 +89,7 @@ export async function POST(req: Request) {
 
         if (!storageErr) {
           storageUploaded = true;
-          const { data: publicUrlData } = supabase.storage
+          const { data: publicUrlData } = adminStorage.storage
             .from('documents')
             .getPublicUrl(uniqueFileName);
           filePath = publicUrlData?.publicUrl || `documents/${uniqueFileName}`;
@@ -137,6 +160,14 @@ export async function POST(req: Request) {
         insertedDoc = d2;
       } else {
         insertErr = e2 || e1;
+        // Fallback: Try with Admin client if RLS blocked the user token client
+        const adminSupabase = createAdminClient();
+        const { data: d3, error: e3 } = await adminSupabase.from('documents').insert(basePayload).select().single();
+        if (d3) {
+          insertedDoc = d3;
+        } else {
+          insertErr = e3 || e2 || e1;
+        }
       }
     }
 

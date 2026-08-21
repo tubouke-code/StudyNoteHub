@@ -23,7 +23,12 @@ import {
   HelpCircle,
   Check,
   Loader2,
-  AlertCircle
+  AlertCircle,
+  Shield,
+  ThumbsUp,
+  ThumbsDown,
+  ExternalLink,
+  Maximize2
 } from 'lucide-react';
 import { formatCurrency, formatFileSize, formatDate, getDocumentFileUrl } from '@/lib/utils';
 import { PaymentModal } from '@/components/payments/PaymentModal';
@@ -43,96 +48,118 @@ export default function NoteDetailPage() {
 
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isUnlocked, setIsUnlocked] = useState(false);
-  const [activeTab, setActiveTab] = useState<'PREVIEW' | 'AI_CHAT' | 'SYLLABUS' | 'REVIEWS'>('PREVIEW');
+  const [activeTab, setActiveTab] = useState<'PREVIEW' | 'FULL_DOC' | 'AI_CHAT' | 'SYLLABUS'>('PREVIEW');
   const [copiedLink, setCopiedLink] = useState(false);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  const [adminToast, setAdminToast] = useState<string | null>(null);
 
   // AI Study Assistant State
   const [aiQuery, setAiQuery] = useState('');
   const [isAiTyping, setIsAiTyping] = useState(false);
-  const [aiChatMessages, setAiChatMessages] = useState<{ role: string; text: string }[]>([]);
+  const [aiChatMessages, setAiChatMessages] = useState<Array<{ role: 'user' | 'assistant'; text: string }>>([
+    {
+      role: 'assistant',
+      text: 'Hello! I am your AI Study Assistant for this material. Ask me to summarize any chapter, generate exam prep flashcards, or explain key formulas!',
+    },
+  ]);
+
+  const isAdmin = user?.role === 'ADMIN';
 
   useEffect(() => {
-    async function loadDocument() {
-      if (!noteId) {
-        setIsLoading(false);
-        return;
-      }
+    async function loadNoteDetails() {
+      if (!noteId) return;
+      setIsLoading(true);
       try {
         const supabase = createClient();
-        
-        // 1. Try with joined uploader profile
-        const { data: docData } = await supabase
+        const { data, error } = await supabase
           .from('documents')
           .select('*, uploader:profiles(*)')
           .eq('id', noteId)
           .maybeSingle();
 
-        if (docData) {
-          const doc = docData as DocumentItem;
-          setNote(doc);
-          const free = Number(doc.price) === 0;
-          setIsUnlocked(free || user?.role === 'ADMIN' || doc.uploader_id === user?.id);
-          setAiChatMessages([
-            {
-              role: 'assistant',
-              text: `Hello! I am your AI Study Tutor for **"${doc.title}"**. Ask me any question, request a summary, or let me generate exam practice questions from this material!`,
-            },
-          ]);
-        } else {
-          // 2. Fallback to raw document select without join
-          const { data: rawDoc } = await supabase
-            .from('documents')
-            .select('*')
-            .eq('id', noteId)
+        if (error) {
+          console.error('Error fetching document details:', error);
+        } else if (data) {
+          setNote(data as DocumentItem);
+          // Free materials or Admin are automatically unlocked
+          if (Number(data.price) === 0 || isAdmin || (user && data.uploader_id === user.id)) {
+            setIsUnlocked(true);
+          }
+        }
+
+        // Check if user already purchased
+        if (user) {
+          const { data: purchase } = await supabase
+            .from('document_purchases')
+            .select('id')
+            .eq('document_id', noteId)
+            .eq('buyer_id', user.id)
             .maybeSingle();
 
-          if (rawDoc) {
-            const doc = rawDoc as DocumentItem;
-            setNote(doc);
-            const free = Number(doc.price) === 0;
-            setIsUnlocked(free || user?.role === 'ADMIN' || doc.uploader_id === user?.id);
-            setAiChatMessages([
-              {
-                role: 'assistant',
-                text: `Hello! I am your AI Study Tutor for **"${doc.title}"**. Ask me any question, request a summary, or let me generate exam practice questions from this material!`,
-              },
-            ]);
+          if (purchase) {
+            setIsUnlocked(true);
           }
         }
       } catch (err) {
-        console.error('Error fetching document:', err);
+        console.error('Fetch error:', err);
       } finally {
         setIsLoading(false);
       }
     }
 
-    loadDocument();
-  }, [noteId, user]);
+    loadNoteDetails();
+  }, [noteId, user, isAdmin]);
 
-  const handleAskAi = (e: React.FormEvent) => {
+  // Admin In-Page Moderation Actions
+  const handleAdminStatusChange = async (newStatus: 'APPROVED' | 'REJECTED' | 'PENDING') => {
+    if (!note || !isAdmin) return;
+    setIsUpdatingStatus(true);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from('documents')
+        .update({ status: newStatus })
+        .eq('id', note.id);
+
+      if (error) {
+        setAdminToast(`Error updating status: ${error.message}`);
+      } else {
+        setNote((prev) => prev ? { ...prev, status: newStatus } : null);
+        setAdminToast(`Document status successfully updated to ${newStatus}!`);
+      }
+    } catch (err: any) {
+      setAdminToast(`Update error: ${err.message}`);
+    } finally {
+      setIsUpdatingStatus(false);
+      setTimeout(() => setAdminToast(null), 4000);
+    }
+  };
+
+  const handleAiSend = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!aiQuery.trim() || !note) return;
+    if (!aiQuery.trim() || isAiTyping) return;
 
-    const userQuestion = aiQuery;
+    const userText = aiQuery;
+    setAiChatMessages((prev) => [...prev, { role: 'user', text: userText }]);
     setAiQuery('');
-    setAiChatMessages((prev) => [...prev, { role: 'user', text: userQuestion }]);
     setIsAiTyping(true);
 
     setTimeout(() => {
+      let reply = `Based on ${note?.course_code || 'this course'}: The core concepts focus on foundational theories, practical problem solving, and past examination analysis.`;
+      if (userText.toLowerCase().includes('summary') || userText.toLowerCase().includes('overview')) {
+        reply = `Executive Summary for ${note?.title}: This document breaks down the semester curriculum into key modules, providing proofs, worked examples, and sample marking schemes.`;
+      } else if (userText.toLowerCase().includes('exam') || userText.toLowerCase().includes('questions')) {
+        reply = `Exam Drill Tip: Focus on Module 2 and Module 4 past questions. Be sure to review standard problem sets and definitions.`;
+      }
+
+      setAiChatMessages((prev) => [...prev, { role: 'assistant', text: reply }]);
       setIsAiTyping(false);
-      setAiChatMessages((prev) => [
-        ...prev,
-        {
-          role: 'assistant',
-          text: `Based on **${note.course_code} (${note.title})**:\n\n1. **Core Concept**: The material breaks this topic into foundational principles with step-by-step exam breakdowns.\n2. **Key Insight for Exams**: Pay special attention to the formulas and solved past question frameworks in Section 3.\n3. **Quick Practice Tip**: Memorize the definitions for high CBT exam scores!`,
-        },
-      ]);
     }, 1200);
   };
 
   const handleDownload = () => {
     if (!note) return;
-    if (!isUnlocked) {
+    if (!isUnlocked && !isAdmin) {
       setIsPaymentModalOpen(true);
       return;
     }
@@ -142,7 +169,6 @@ export default function NoteDetailPage() {
   const handlePaymentSuccess = () => {
     setIsPaymentModalOpen(false);
     setIsUnlocked(true);
-    // Instant download
     if (note) {
       window.location.href = `/api/documents/${note.id}/download`;
     }
@@ -173,7 +199,7 @@ export default function NoteDetailPage() {
         </div>
         <h2 className="text-2xl font-black text-slate-900">Study Material Not Found</h2>
         <p className="text-xs sm:text-sm text-slate-500">
-          This document may have been removed or is pending administrator moderation.
+          This study note or past question guide may have been removed or unpublished.
         </p>
         <Link
           href="/notes"
@@ -204,21 +230,67 @@ export default function NoteDetailPage() {
         backLabel="Back to Catalog"
       />
 
-      {/* Pending Banner if viewing in moderation preview */}
-      {note.status === 'PENDING' && (
-        <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2.5">
-            <span className="text-xs font-extrabold uppercase bg-amber-200/80 px-2.5 py-0.5 rounded-full text-amber-900">
-              Moderation Preview
-            </span>
-            <span className="text-xs">This material is currently in the admin moderation queue awaiting public approval.</span>
+      {/* Admin Quick Toast Notice */}
+      {adminToast && (
+        <div className="p-4 rounded-2xl bg-slate-900 text-white flex items-center justify-between gap-4 animate-in fade-in shadow-xl">
+          <span className="text-xs font-bold">{adminToast}</span>
+          <button onClick={() => setAdminToast(null)} className="text-slate-400 hover:text-white text-xs font-bold">
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {/* ADMIN MODERATION & DECISION PANEL */}
+      {isAdmin && (
+        <div className="p-5 rounded-3xl bg-indigo-900 text-white shadow-xl space-y-4 border border-indigo-700">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <Shield className="w-5 h-5 text-amber-400" />
+                <h3 className="text-sm font-black uppercase tracking-wider text-amber-300">
+                  Super Admin Moderation Center
+                </h3>
+                <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full ${
+                  note.status === 'APPROVED' ? 'bg-emerald-500 text-white' : note.status === 'REJECTED' ? 'bg-red-500 text-white' : 'bg-amber-400 text-slate-900'
+                }`}>
+                  Status: {note.status}
+                </span>
+              </div>
+              <p className="text-xs text-indigo-200">
+                Full Document Inspection Active. Review all pages and contents before approving or rejecting for the public catalog.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2.5">
+              <button
+                onClick={() => handleAdminStatusChange('APPROVED')}
+                disabled={isUpdatingStatus || note.status === 'APPROVED'}
+                className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs shadow-md transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+              >
+                <ThumbsUp className="w-4 h-4" />
+                {note.status === 'APPROVED' ? 'Published to Catalog' : 'Approve & Publish'}
+              </button>
+
+              <button
+                onClick={() => handleAdminStatusChange('REJECTED')}
+                disabled={isUpdatingStatus || note.status === 'REJECTED'}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-md transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+              >
+                <ThumbsDown className="w-4 h-4" />
+                Reject Material
+              </button>
+
+              <a
+                href={downloadUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="px-4 py-2 rounded-xl bg-indigo-800 hover:bg-indigo-700 text-indigo-100 font-bold text-xs border border-indigo-600 transition-all flex items-center gap-1.5"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                Open Full Raw File
+              </a>
+            </div>
           </div>
-          <a
-            href={downloadUrl}
-            className="px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shrink-0 transition-colors"
-          >
-            Review Document (PDF)
-          </a>
         </div>
       )}
 
@@ -228,7 +300,7 @@ export default function NoteDetailPage() {
         {/* Left 2 Cols: Main Info & Interactive Previewer */}
         <div className="lg:col-span-2 space-y-6">
           
-          <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-sm space-y-4">
+          <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-xs space-y-4">
             <div className="flex flex-wrap items-center gap-2">
               <span className="px-3 py-1 rounded-lg text-xs font-extrabold bg-primary-50 text-primary-700 border border-primary-100">
                 {note.course_code}
@@ -288,8 +360,21 @@ export default function NoteDetailPage() {
                   : 'text-slate-500 hover:text-slate-900'
               }`}
             >
-              <Eye className="w-4 h-4" /> Document Sample Preview
+              <Eye className="w-4 h-4" /> Document Overview
             </button>
+
+            {(isAdmin || isUnlocked) && (
+              <button
+                onClick={() => setActiveTab('FULL_DOC')}
+                className={`pb-3 transition-colors flex items-center gap-1.5 cursor-pointer ${
+                  activeTab === 'FULL_DOC'
+                    ? 'text-emerald-700 border-b-2 border-emerald-600 font-extrabold'
+                    : 'text-slate-500 hover:text-slate-900'
+                }`}
+              >
+                <Maximize2 className="w-4 h-4 text-emerald-600" /> Full Document Reader ({isAdmin ? 'Admin Mode' : 'Unlocked'})
+              </button>
+            )}
 
             <button
               onClick={() => setActiveTab('AI_CHAT')}
@@ -315,9 +400,9 @@ export default function NoteDetailPage() {
             </button>
           </div>
 
-          {/* TAB 1: DOCUMENT PREVIEWER WITH WATERMARK */}
+          {/* TAB 1: DOCUMENT PREVIEWER */}
           {activeTab === 'PREVIEW' && (
-            <div className="relative bg-white rounded-3xl border border-slate-200/80 shadow-md p-6 sm:p-8 space-y-6 overflow-hidden">
+            <div className="relative bg-white rounded-3xl border border-slate-200/80 shadow-xs p-6 sm:p-8 space-y-6 overflow-hidden">
               
               {/* Dynamic Anti-Piracy Watermark Overlay */}
               <div className="absolute inset-0 pointer-events-none z-10 flex items-center justify-center rotate-[-25deg] opacity-[0.07] select-none text-slate-900 font-black text-2xl sm:text-4xl text-center leading-loose">
@@ -342,8 +427,8 @@ export default function NoteDetailPage() {
                 </div>
               </div>
 
-              {/* Paywall Blur Guard for remaining pages */}
-              {!isUnlocked ? (
+              {/* Paywall Blur Guard for non-admin students */}
+              {!isUnlocked && !isAdmin ? (
                 <div className="relative pt-4">
                   <div className="space-y-3 blur-xs select-none opacity-40 text-xs sm:text-sm font-serif">
                     <p>Chapter 2: Advanced Empirical Modeling and Regression Analysis...</p>
@@ -372,12 +457,12 @@ export default function NoteDetailPage() {
                 </div>
               ) : (
                 <div className="p-4 rounded-2xl bg-emerald-50 text-emerald-900 text-xs font-semibold flex items-center justify-between">
-                  <span>✓ You own this material. You can download and read anytime.</span>
+                  <span>✓ {isAdmin ? 'Admin Inspection Mode: Full Document Access Granted.' : 'You own this material. You can download and read anytime.'}</span>
                   <a
                     href={downloadUrl}
                     className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1 transition-colors"
                   >
-                    <Download className="w-3.5 h-3.5" /> Download PDF
+                    <Download className="w-3.5 h-3.5" /> Download Full File
                   </a>
                 </div>
               )}
@@ -385,9 +470,38 @@ export default function NoteDetailPage() {
             </div>
           )}
 
+          {/* TAB 1.5: FULL DOCUMENT READER (FOR ADMINS & UNLOCKED USERS) */}
+          {activeTab === 'FULL_DOC' && (isAdmin || isUnlocked) && (
+            <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs p-6 space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <span className="text-xs font-bold text-slate-700 flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-emerald-600" />
+                  Full Document Inspection Viewer ({note.file_type || 'PDF'})
+                </span>
+                <a
+                  href={downloadUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-3 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs flex items-center gap-1"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" /> Open in Full Window
+                </a>
+              </div>
+
+              {/* Embedded Document Frame */}
+              <div className="w-full h-[650px] bg-slate-100 rounded-2xl overflow-hidden border border-slate-200">
+                <iframe
+                  src={downloadUrl}
+                  className="w-full h-full border-none"
+                  title="Document Previewer"
+                />
+              </div>
+            </div>
+          )}
+
           {/* TAB 2: AI STUDY ASSISTANT */}
           {activeTab === 'AI_CHAT' && (
-            <div className="bg-white rounded-3xl border border-slate-200/80 shadow-md p-6 space-y-4 h-[480px] flex flex-col justify-between">
+            <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs p-6 space-y-4 h-[480px] flex flex-col justify-between">
               <div className="overflow-y-auto space-y-3 flex-1 pr-1">
                 {aiChatMessages.map((msg, i) => (
                   <div
@@ -413,25 +527,26 @@ export default function NoteDetailPage() {
                   </div>
                 ))}
                 {isAiTyping && (
-                  <div className="flex items-center gap-2 text-xs text-slate-400">
-                    <Bot className="w-4 h-4 animate-spin" /> AI Tutor is reading note & typing...
+                  <div className="flex gap-2 items-center text-xs text-slate-400">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> AI Assistant is analyzing document context...
                   </div>
                 )}
               </div>
 
-              <form onSubmit={handleAskAi} className="pt-2 border-t border-slate-100 flex items-center gap-2">
+              <form onSubmit={handleAiSend} className="flex gap-2 pt-2 border-t border-slate-100">
                 <input
                   type="text"
                   value={aiQuery}
                   onChange={(e) => setAiQuery(e.target.value)}
-                  placeholder="Ask a question, request a summary, or ask for practice questions..."
-                  className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm outline-none focus:border-indigo-500"
+                  placeholder="Ask a question about this study material..."
+                  className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-indigo-500"
                 />
                 <button
                   type="submit"
-                  className="p-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs"
+                  disabled={!aiQuery.trim() || isAiTyping}
+                  className="px-4 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-xs disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
                 >
-                  <Send className="w-4 h-4" />
+                  <Send className="w-3.5 h-3.5" />
                 </button>
               </form>
             </div>
@@ -439,95 +554,106 @@ export default function NoteDetailPage() {
 
           {/* TAB 3: SYLLABUS OUTLINE */}
           {activeTab === 'SYLLABUS' && (
-            <div className="bg-white rounded-3xl border border-slate-200/80 shadow-md p-6 sm:p-8 space-y-4 text-xs sm:text-sm text-slate-700">
-              <h3 className="font-bold text-slate-900">Covered Modules:</h3>
-              <ul className="list-decimal pl-5 space-y-2">
-                <li>Module 1: Introduction, Definitions & Terminology</li>
-                <li>Module 2: Historical Context, Key Theorists & Comparative Case Studies</li>
-                <li>Module 3: Quantitative Formulations & Analytical Graphs</li>
-                <li>Module 4: Solved Semester Past Questions with Model Solutions</li>
-              </ul>
+            <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs p-6 sm:p-8 space-y-4">
+              <h4 className="text-sm font-bold text-slate-900">Semester Module Breakdown</h4>
+              <div className="space-y-3">
+                <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 text-xs space-y-1">
+                  <p className="font-bold text-slate-900">Module 1: Principles & Definitions</p>
+                  <p className="text-slate-500">Foundational concepts and essential terminologies for {note.course_code}.</p>
+                </div>
+                <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 text-xs space-y-1">
+                  <p className="font-bold text-slate-900">Module 2: Practical Applications & Proofs</p>
+                  <p className="text-slate-500">Mathematical models, real-world case studies, and quantitative drills.</p>
+                </div>
+                <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 text-xs space-y-1">
+                  <p className="font-bold text-slate-900">Module 3: Solved Examination Past Questions</p>
+                  <p className="text-slate-500">Step-by-step verified solutions and typical exam marking rubrics.</p>
+                </div>
+              </div>
             </div>
           )}
 
         </div>
 
-        {/* Right Col: Pricing & Author Bio */}
+        {/* Right 1 Col: Purchase & Author Sidebar */}
         <div className="space-y-6">
           
-          <div className="p-6 bg-white rounded-3xl border border-slate-200/80 shadow-md space-y-6">
-            <div>
-              <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400">
-                Purchase Access
-              </span>
-              <p className="text-3xl font-black text-slate-900 mt-1">
-                {isFree ? 'FREE' : formatCurrency(note.price)}
-              </p>
-              <span className="text-xs text-slate-500">Lifetime access • Instant PDF download</span>
+          {/* Purchase Action Card */}
+          <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-xs space-y-6">
+            <div className="space-y-1">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Unlock Full Access</span>
+              <div className="flex items-baseline gap-2">
+                <span className="text-3xl font-black text-slate-900">
+                  {isFree ? 'FREE' : formatCurrency(note.price)}
+                </span>
+                {!isFree && <span className="text-xs text-slate-400">One-time purchase</span>}
+              </div>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-3">
               <button
                 onClick={handleDownload}
-                className={`w-full py-3.5 rounded-xl font-bold text-xs shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                  isUnlocked
-                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                    : 'bg-primary-600 hover:bg-primary-700 text-white shadow-primary-600/30'
-                }`}
+                className="w-full py-3.5 rounded-2xl bg-primary-600 hover:bg-primary-700 text-white font-black text-sm shadow-md shadow-primary-600/30 transition-all flex items-center justify-center gap-2 cursor-pointer"
               >
-                {isUnlocked ? (
-                  <>
-                    <Download className="w-4 h-4" />
-                    Download Complete File (PDF)
-                  </>
-                ) : (
-                  <>
-                    <Lock className="w-4 h-4" />
-                    Unlock Note for {formatCurrency(note.price)}
-                  </>
-                )}
+                <Download className="w-4 h-4" />
+                {isUnlocked || isAdmin ? 'Download Complete Material' : `Unlock & Download (${formatCurrency(note.price)})`}
               </button>
 
               <button
                 onClick={handleShare}
-                className="w-full py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                className="w-full py-2.5 rounded-2xl bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold text-xs border border-slate-200 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
               >
-                {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Share2 className="w-3.5 h-3.5 text-slate-400" />}
-                {copiedLink ? 'Link Copied!' : 'Share Material with Friends'}
+                <Share2 className="w-3.5 h-3.5 text-slate-500" />
+                {copiedLink ? 'Link Copied to Clipboard!' : 'Share with Coursemates'}
               </button>
             </div>
 
-            {/* Author Profile */}
-            {note.uploader && (
-              <div className="pt-4 border-t border-slate-100 flex items-center gap-3">
-                <img
-                  src={note.uploader?.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=150'}
-                  alt={note.uploader?.full_name || 'Author'}
-                  className="w-10 h-10 rounded-full object-cover ring-2 ring-primary-100"
-                />
-                <div>
-                  <p className="text-xs font-bold text-slate-900">{note.uploader?.full_name}</p>
-                  <p className="text-[11px] text-slate-500">{note.uploader?.institution || note.institution}</p>
-                  <span className="text-[10px] text-emerald-700 font-bold">✓ 90% Creator Royalties Earner</span>
-                </div>
+            <div className="pt-4 border-t border-slate-100 space-y-2 text-xs text-slate-500">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>100% Verified Academic Content</span>
               </div>
-            )}
+              <div className="flex items-center gap-2">
+                <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>Instant PDF/DOCX Download & Lifetime Access</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Author / Contributor Info */}
+          <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-xs space-y-4">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Contributed By</h4>
+            <div className="flex items-center gap-3">
+              <img
+                src={note.uploader?.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=150'}
+                alt={note.uploader?.full_name || 'Contributor'}
+                className="w-12 h-12 rounded-2xl object-cover ring-2 ring-primary-100"
+              />
+              <div>
+                <h5 className="font-bold text-slate-900 text-sm">{note.uploader?.full_name || 'Academic Scholar'}</h5>
+                <p className="text-xs text-slate-400">{note.institution}</p>
+                <span className="inline-flex items-center gap-1 text-[10px] font-extrabold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full mt-1">
+                  ✓ Verified Contributor (90% Royalty Author)
+                </span>
+              </div>
+            </div>
           </div>
 
         </div>
 
       </div>
 
-      {/* Checkout Modal */}
+      {/* Payment Modal */}
       <PaymentModal
         isOpen={isPaymentModalOpen}
         onClose={() => setIsPaymentModalOpen(false)}
-        title={`Unlock "${note.title}"`}
-        amount={note.price}
+        title={`Unlock ${note.title}`}
+        amount={Number(note.price) || 0}
         itemType="NOTE_PURCHASE"
         itemId={note.id}
         onSuccess={handlePaymentSuccess}
       />
+
     </div>
   );
 }
