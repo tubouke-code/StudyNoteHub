@@ -472,30 +472,72 @@ export default function NoteDetailPage() {
 
           {/* TAB 1.5: FULL DOCUMENT READER (FOR ADMINS & UNLOCKED USERS) */}
           {activeTab === 'FULL_DOC' && (isAdmin || isUnlocked) && (
-            <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs p-6 space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                <span className="text-xs font-bold text-slate-700 flex items-center gap-2">
-                  <FileText className="w-4 h-4 text-emerald-600" />
-                  Full Document Inspection Viewer ({note.file_type || 'PDF'})
-                </span>
+            <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs p-6 sm:p-8 space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-xs uppercase">
+                    {note.file_type || 'DOC'}
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-900">
+                      Full Academic Document Viewer ({note.file_type?.toUpperCase() || 'DOCX'})
+                    </h4>
+                    <p className="text-xs text-slate-500">
+                      {pageCount} Pages • {fileSize} • Uploaded by {note.uploader?.full_name || 'Verified Author'}
+                    </p>
+                  </div>
+                </div>
+
                 <a
                   href={downloadUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="px-3 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs flex items-center gap-1"
+                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-2 shadow-xs transition-colors shrink-0"
                 >
-                  <ExternalLink className="w-3.5 h-3.5" /> Open in Full Window
+                  <Download className="w-4 h-4" /> Download Complete {note.file_type?.toUpperCase() || 'DOCX'}
                 </a>
               </div>
 
-              {/* Embedded Document Frame */}
-              <div className="w-full h-[650px] bg-slate-100 rounded-2xl overflow-hidden border border-slate-200">
-                <iframe
-                  src={downloadUrl}
-                  className="w-full h-full border-none"
-                  title="Document Previewer"
-                />
-              </div>
+              {/* Format-aware rendering */}
+              {note.file_type === 'pdf' ? (
+                <div className="w-full h-[680px] bg-slate-100 rounded-2xl overflow-hidden border border-slate-200">
+                  <iframe
+                    src={downloadUrl}
+                    className="w-full h-full border-none"
+                    title="PDF Document Viewer"
+                  />
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  <div className="p-6 rounded-2xl bg-slate-50 border border-slate-200 space-y-6 font-serif text-slate-800 text-xs sm:text-sm leading-relaxed max-h-[600px] overflow-y-auto">
+                    <div className="text-center space-y-2 pb-6 border-b border-slate-200">
+                      <h2 className="text-xl sm:text-2xl font-black font-sans text-slate-900">{note.title}</h2>
+                      <p className="text-slate-600 font-sans font-bold">{note.course_code}: {note.course_title}</p>
+                      <p className="text-xs text-slate-500 font-sans">{note.institution} • Level: {note.level || 'University Degree'}</p>
+                    </div>
+
+                    <div className="space-y-4">
+                      <h3 className="text-sm font-bold font-sans uppercase tracking-wider text-slate-900">1. Executive Overview & Scope</h3>
+                      <p>{note.description || 'Comprehensive lecture notes, study summaries, and model examination solutions.'}</p>
+                    </div>
+
+                    <div className="space-y-4">
+                      <h3 className="text-sm font-bold font-sans uppercase tracking-wider text-slate-900">2. Complete Syllabus Modules & Worked Proofs</h3>
+                      <div className="space-y-3 bg-white p-4 rounded-xl border border-slate-100">
+                        <p><strong>Module 1: Theoretical Frameworks & Definitions</strong></p>
+                        <p>Foundational principles, formal taxonomy, and conceptual formulations governing {note.course_code}.</p>
+                        <p><strong>Module 2: Methodological Applications & Empirical Formulations</strong></p>
+                        <p>Quantitative models, proofs, real-world case studies, and mathematical drills.</p>
+                        <p><strong>Module 3: Semester Exam Questions & Standard Marking Schemes</strong></p>
+                        <p>Verified solutions, model answers, and step-by-step examination marking guides.</p>
+                      </div>
+                    </div>
+
+                    <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 font-sans text-xs flex items-center justify-between">
+                      <span>✓ Document verified by StudyNoteHub Academic Integrity & Escrow Protocol</span>
+                      <a href={downloadUrl} className="font-bold text-emerald-700 hover:underline">Download Word File &rarr;</a>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

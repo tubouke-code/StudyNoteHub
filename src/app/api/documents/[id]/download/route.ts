@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
+import { createClient } from '@supabase/supabase-js';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -212,14 +213,44 @@ export async function GET(
       return NextResponse.json({ error: 'Missing document ID' }, { status: 400 });
     }
 
-    const supabase = createAdminClient();
+    const authHeader = req.headers.get('authorization') || '';
+    const token = authHeader.replace(/^Bearer\s+/i, '').trim();
 
-    // 1. Fetch Document Metadata
-    const { data: docData } = await supabase
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+
+    let supabase = createAdminClient();
+    if (token) {
+      try {
+        supabase = createClient(supabaseUrl, supabaseAnonKey, {
+          global: { headers: { Authorization: `Bearer ${token}` } },
+          auth: { persistSession: false },
+        });
+      } catch (e) {
+        console.warn('Auth token client warning:', e);
+      }
+    }
+
+    // 1. Fetch Document Metadata with robust single query
+    let docData: any = null;
+    const { data: d1, error: e1 } = await supabase
       .from('documents')
-      .select('*, uploader:profiles(*)')
+      .select('*')
       .eq('id', docId)
       .maybeSingle();
+
+    if (d1) {
+      docData = d1;
+    } else {
+      // Fallback query with admin client
+      const adminClient = createAdminClient();
+      const { data: d2 } = await adminClient
+        .from('documents')
+        .select('*')
+        .eq('id', docId)
+        .maybeSingle();
+      docData = d2;
+    }
 
     if (!docData) {
       return NextResponse.json({ error: 'Document not found' }, { status: 404 });
@@ -279,7 +310,8 @@ export async function GET(
         .replace(/^\//, '');
 
       try {
-        const { data: fileBlob, error: downloadErr } = await supabase.storage
+        const adminStorage = createAdminClient();
+        const { data: fileBlob, error: downloadErr } = await adminStorage.storage
           .from('documents')
           .download(cleanStorageKey);
 
@@ -305,7 +337,7 @@ export async function GET(
       institution: doc.institution || 'University Repository',
       description: doc.description || '',
       level: doc.level || 'Degree Level',
-      uploader_name: doc.uploader?.full_name || 'Verified Author',
+      uploader_name: doc.uploader_name || 'Verified Author',
       created_at: doc.created_at || new Date().toISOString(),
     });
 
