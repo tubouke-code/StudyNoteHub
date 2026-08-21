@@ -1,19 +1,10 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createAdminClient } from '@/lib/supabase/server';
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-
-    if (!supabaseUrl || !supabaseKey) {
-      return NextResponse.json({ error: 'Missing Supabase configuration' }, { status: 500 });
-    }
-
-    const supabase = createClient(supabaseUrl, supabaseKey, {
-      auth: { persistSession: false },
-    });
+    const supabase = createAdminClient();
 
     const userId = body.client_id || body.student_id;
     if (!userId) {
@@ -35,7 +26,7 @@ export async function POST(req: Request) {
     const titleVal = body.title?.trim() || 'Academic Research Project';
     const topicVal = body.topic?.trim() || titleVal;
 
-    // 2. Build full payload satisfying all schema constraints
+    // 2. Build full payload satisfying schema constraints
     const fullPayload: Record<string, any> = {
       client_id: userId,
       student_id: userId,
@@ -71,7 +62,7 @@ export async function POST(req: Request) {
       lastError = e1;
       console.warn('First order insert attempt failed:', e1);
 
-      // Attempt 2: Minimal core payload
+      // Attempt 2: Core payload with client_id
       const corePayload = {
         title: titleVal,
         academic_level: body.academic_level || 'Undergraduate',
@@ -85,7 +76,6 @@ export async function POST(req: Request) {
         escrow_status: 'UNPAID',
       };
 
-      // Try with client_id
       const { data: d2, error: e2 } = await supabase.from('orders').insert({
         ...corePayload,
         client_id: userId,
