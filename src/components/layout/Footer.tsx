@@ -77,7 +77,7 @@ export function Footer() {
         <div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
           <p>© {new Date().getFullYear()} StudyNoteHub Inc. All rights reserved.</p>
           <div className="flex gap-6">
-            <Link href="/terms" className="hover:text-slate-400">Academic Integrity Policy</Link>
+            <Link href="/academic-integrity" className="hover:text-slate-400">Academic Integrity Policy</Link>
             <Link href="/privacy" className="hover:text-slate-400">Privacy Policy</Link>
             <Link href="/terms" className="hover:text-slate-400">Terms of Escrow Service</Link>
           </div>
