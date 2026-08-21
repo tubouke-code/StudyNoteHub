@@ -93,109 +93,37 @@ export default function UploadNotesPage() {
 
     setIsUploading(true);
     try {
-      const supabase = createClient();
-      
-      // 1. Ensure user exists in public.profiles so foreign key constraint never fails
-      await supabase.from('profiles').upsert({
-        id: user.id,
-        email: user.email,
-        full_name: user.full_name || user.email.split('@')[0],
-        role: user.role || 'STUDENT',
-        is_email_verified: true,
-      }, { onConflict: 'id' });
-
-      let filePath = 'documents/sample.pdf';
-
-      // 2. Upload file to Supabase storage if selected
+      // Build FormData with the actual uploaded binary file (PDF, DOCX, DOC, PPTX, TXT, etc.)
+      const formData = new FormData();
       if (file) {
-        const fileExt = file.name.split('.').pop() || 'pdf';
-        const fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${fileExt}`;
-        filePath = `documents/${fileName}`;
-
-        try {
-          const { error: storageError } = await supabase.storage
-            .from('documents')
-            .upload(fileName, file, {
-              cacheControl: '3600',
-              upsert: true,
-            });
-
-          if (!storageError) {
-            const { data: urlData } = supabase.storage
-              .from('documents')
-              .getPublicUrl(fileName);
-            if (urlData?.publicUrl) {
-              filePath = urlData.publicUrl;
-            }
-          }
-        } catch (storageErr) {
-          console.warn('Storage upload note:', storageErr);
-        }
+        formData.append('file', file);
       }
+      formData.append('title', title.trim());
+      formData.append('course_code', courseCode.trim().toUpperCase());
+      formData.append('course_title', courseTitle.trim() || title.trim());
+      formData.append('institution', finalInstitution);
+      formData.append('description', description.trim());
+      formData.append('price', actualPrice.toString());
+      formData.append('uploader_id', user.id);
+      formData.append('uploader_email', user.email || '');
+      formData.append('uploader_name', user.full_name || '');
+      formData.append('faculty', category);
+      formData.append('department', category);
+      formData.append('level', level);
 
-      // 3. Insert into Supabase documents table with resilient fallback
-      const basePayload: Record<string, any> = {
-        uploader_id: user.id,
-        title: title.trim(),
-        course_code: courseCode.trim().toUpperCase(),
-        course_title: courseTitle.trim() || title.trim(),
-        institution: finalInstitution,
-        description: description.trim(),
-        price: actualPrice,
-        file_path: filePath,
-        file_type: file ? (file.name.split('.').pop() || 'pdf') : 'pdf',
-        status: 'PENDING',
-      };
+      const res = await fetch('/api/documents/upload', {
+        method: 'POST',
+        body: formData,
+      });
 
-      // Attempt full insert with optional metadata
-      let insertError = null;
-      try {
-        const { error } = await supabase.from('documents').insert({
-          ...basePayload,
-          faculty: category,
-          department: category,
-          level,
-          file_size_bytes: file ? file.size : 2048000,
-          downloads_count: 0,
-        });
-        insertError = error;
-      } catch (err: any) {
-        insertError = err;
-      }
-
-      // If full insert failed (e.g. column not in schema cache or RLS), try core fields
-      if (insertError) {
-        console.warn('Full client insert failed, retrying with core columns:', insertError);
-        const { error: retryErr } = await supabase.from('documents').insert(basePayload);
-        
-        // If client-side still fails (e.g. Row-Level Security policy error), use Server API route fallback
-        if (retryErr) {
-          console.warn('Client RLS/Insert failed, executing server API fallback:', retryErr);
-          const res = await fetch('/api/documents/upload', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              ...basePayload,
-              uploader_email: user.email,
-              uploader_name: user.full_name,
-              faculty: category,
-              department: category,
-              level,
-              file_size_bytes: file ? file.size : 2048000,
-            }),
-          });
-          const apiRes = await res.json();
-          if (!res.ok || apiRes.error) {
-            console.error('API fallback upload error:', apiRes.error);
-            setUploadError(apiRes.error || 'Failed to submit document to database.');
-            return;
-          }
-        }
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        throw new Error(data.error || 'Failed to upload study material.');
       }
 
       setUploadSuccess(true);
       setTimeout(() => {
-        router.push('/dashboard');
+        router.push(user.role === 'WRITER' ? '/writer-dashboard' : '/dashboard');
       }, 2000);
     } catch (err: any) {
       console.error('Upload exception:', err);

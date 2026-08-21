@@ -1,5 +1,23 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
+import fs from 'fs';
+import path from 'path';
+
+const MIME_TYPES: Record<string, string> = {
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  doc: 'application/msword',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  ppt: 'application/vnd.ms-powerpoint',
+  pdf: 'application/pdf',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  xls: 'application/vnd.ms-excel',
+  txt: 'text/plain',
+  zip: 'application/zip',
+};
+
+function getMimeType(ext: string): string {
+  return MIME_TYPES[ext.toLowerCase()] || 'application/octet-stream';
+}
 
 function sanitizeForPDF(text: string): string {
   return (text || '')
@@ -195,8 +213,8 @@ export async function GET(
 
     const supabase = createAdminClient();
 
-    // 1. Fetch Document
-    const { data: docData, error: docError } = await supabase
+    // 1. Fetch Document Metadata
+    const { data: docData } = await supabase
       .from('documents')
       .select('*, uploader:profiles(*)')
       .eq('id', docId)
@@ -207,9 +225,27 @@ export async function GET(
     }
 
     const doc = docData as any;
-    const rawFilePath = doc.file_path;
+    const rawFilePath = doc.file_path || '';
+    const fileType = (doc.file_type || rawFilePath.split('.').pop() || 'pdf').toLowerCase();
+    const mimeType = getMimeType(fileType);
+    const safeTitle = (doc.title || 'Academic_Material').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const safeFilename = `${(doc.course_code || 'MATERIAL')}_${safeTitle}.${fileType}`;
 
-    // 2. If valid external remote URL (and not supabase bucket URL), redirect directly
+    // 2. Case A: File stored in local filesystem (e.g. /uploads/documents/...)
+    if (rawFilePath.startsWith('/uploads/documents/')) {
+      const localFilePath = path.join(process.cwd(), 'public', rawFilePath.replace(/^\//, ''));
+      if (fs.existsSync(localFilePath)) {
+        const fileBuffer = fs.readFileSync(localFilePath);
+        return new NextResponse(new Uint8Array(fileBuffer), {
+          headers: {
+            'Content-Type': mimeType,
+            'Content-Disposition': `attachment; filename="${safeFilename}"`,
+          },
+        });
+      }
+    }
+
+    // 3. Case B: Stored as external direct link (Google Drive, AWS, Cloudinary)
     if (
       rawFilePath &&
       (rawFilePath.startsWith('http://') || rawFilePath.startsWith('https://')) &&
@@ -218,8 +254,8 @@ export async function GET(
       return NextResponse.redirect(rawFilePath);
     }
 
-    // 3. If in Supabase storage, attempt download from storage
-    if (rawFilePath) {
+    // 4. Case C: Stored in Supabase storage bucket
+    if (rawFilePath && !rawFilePath.includes('sample.pdf')) {
       const cleanStorageKey = rawFilePath
         .replace(/^https?:\/\/[^\/]+\/storage\/v1\/object\/public\/documents\//, '')
         .replace(/^documents\//, '')
@@ -232,11 +268,9 @@ export async function GET(
 
         if (!downloadErr && fileBlob) {
           const arrayBuffer = await fileBlob.arrayBuffer();
-          const safeFilename = `${(doc.course_code || 'MATERIAL')}_${(doc.title || 'Note').replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`;
-          
           return new NextResponse(new Uint8Array(arrayBuffer), {
             headers: {
-              'Content-Type': 'application/pdf',
+              'Content-Type': mimeType,
               'Content-Disposition': `attachment; filename="${safeFilename}"`,
             },
           });
@@ -246,7 +280,7 @@ export async function GET(
       }
     }
 
-    // 4. Fallback: Generate valid StudyNoteHub Verified PDF
+    // 5. Case D: Fallback synthesis if raw file was missing
     const pdfBuffer = createStudyNotePDF({
       title: doc.title || 'Study Material',
       course_code: doc.course_code || 'ACADEMIC',
@@ -258,12 +292,12 @@ export async function GET(
       created_at: doc.created_at || new Date().toISOString(),
     });
 
-    const safeFilename = `${(doc.course_code || 'MATERIAL')}_${(doc.title || 'Note').replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`;
+    const fallbackFilename = `${(doc.course_code || 'MATERIAL')}_${safeTitle}.pdf`;
 
     return new NextResponse(new Uint8Array(pdfBuffer), {
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="${safeFilename}"`,
+        'Content-Disposition': `attachment; filename="${fallbackFilename}"`,
       },
     });
   } catch (err: any) {
