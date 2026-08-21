@@ -264,14 +264,24 @@ export function Navbar() {
                   )}
                 </div>
 
-                {/* Wallet Balance Pill */}
-                <Link
-                  href="/wallet"
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 hover:bg-emerald-100 transition-all shadow-xs"
-                >
-                  <Wallet className="w-3.5 h-3.5 text-emerald-600" />
-                  <span className="text-xs font-bold">{formatCurrency(user.wallet_balance)}</span>
-                </Link>
+                {/* Hirer Dashboard Link for Students, or Wallet for others */}
+                {user.role === 'STUDENT' ? (
+                  <Link
+                    href="/dashboard"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary-50 border border-primary-200 text-primary-800 hover:bg-primary-100 transition-all shadow-xs"
+                  >
+                    <LayoutDashboard className="w-3.5 h-3.5 text-primary-600" />
+                    <span className="text-xs font-bold">Hirer Dashboard</span>
+                  </Link>
+                ) : (
+                  <Link
+                    href={getDashboardHref()}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 hover:bg-emerald-100 transition-all shadow-xs"
+                  >
+                    <Wallet className="w-3.5 h-3.5 text-emerald-600" />
+                    <span className="text-xs font-bold">{formatCurrency(user.wallet_balance)}</span>
+                  </Link>
+                )}
 
                 {/* User Dropdown */}
                 <div className="relative">
