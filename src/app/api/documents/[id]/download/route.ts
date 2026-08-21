@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 
 const MIME_TYPES: Record<string, string> = {
   docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -97,7 +98,7 @@ BT
 50 515 Td
 (Module 1: Foundational Theories, Definitions, and Conceptual Frameworks) Tj
 50 495 Td
-(Module 2: Methodological Approches, Proofs, and Quantitative Formulations) Tj
+(Module 2: Methodological Approaches, Proofs, and Quantitative Formulations) Tj
 50 475 Td
 (Module 3: Case Studies, Empirical Findings, and Comparative Analysis) Tj
 50 455 Td
@@ -231,11 +232,12 @@ export async function GET(
     const safeTitle = (doc.title || 'Academic_Material').replace(/[^a-zA-Z0-9_-]/g, '_');
     const safeFilename = `${(doc.course_code || 'MATERIAL')}_${safeTitle}.${fileType}`;
 
-    // 2. Case A: File stored in local filesystem (e.g. /uploads/documents/...)
-    if (rawFilePath.startsWith('/uploads/documents/')) {
-      const localFilePath = path.join(process.cwd(), 'public', rawFilePath.replace(/^\//, ''));
-      if (fs.existsSync(localFilePath)) {
-        const fileBuffer = fs.readFileSync(localFilePath);
+    // 2. Case A: Embedded Base64 Data URI (e.g. data:application/vnd...;base64,...)
+    if (rawFilePath.startsWith('data:')) {
+      const base64Index = rawFilePath.indexOf(';base64,');
+      if (base64Index !== -1) {
+        const base64Content = rawFilePath.substring(base64Index + 8);
+        const fileBuffer = Buffer.from(base64Content, 'base64');
         return new NextResponse(new Uint8Array(fileBuffer), {
           headers: {
             'Content-Type': mimeType,
@@ -245,7 +247,22 @@ export async function GET(
       }
     }
 
-    // 3. Case B: Stored as external direct link (Google Drive, AWS, Cloudinary)
+    // 3. Case B: Local / Temporary filesystem (e.g. /tmp_uploads/... or /uploads/...)
+    if (rawFilePath.startsWith('/tmp_uploads/')) {
+      const fileName = rawFilePath.replace('/tmp_uploads/', '');
+      const tempFilePath = path.join(os.tmpdir(), 'snh_uploads', fileName);
+      if (fs.existsSync(tempFilePath)) {
+        const fileBuffer = fs.readFileSync(tempFilePath);
+        return new NextResponse(new Uint8Array(fileBuffer), {
+          headers: {
+            'Content-Type': mimeType,
+            'Content-Disposition': `attachment; filename="${safeFilename}"`,
+          },
+        });
+      }
+    }
+
+    // 4. Case C: External Direct Link (Google Drive, Cloudinary, AWS S3)
     if (
       rawFilePath &&
       (rawFilePath.startsWith('http://') || rawFilePath.startsWith('https://')) &&
@@ -254,8 +271,8 @@ export async function GET(
       return NextResponse.redirect(rawFilePath);
     }
 
-    // 4. Case C: Stored in Supabase storage bucket
-    if (rawFilePath && !rawFilePath.includes('sample.pdf')) {
+    // 5. Case D: Supabase Storage Bucket
+    if (rawFilePath && !rawFilePath.includes('sample')) {
       const cleanStorageKey = rawFilePath
         .replace(/^https?:\/\/[^\/]+\/storage\/v1\/object\/public\/documents\//, '')
         .replace(/^documents\//, '')
@@ -280,7 +297,7 @@ export async function GET(
       }
     }
 
-    // 5. Case D: Fallback synthesis if raw file was missing
+    // 6. Case E: Fallback Synthesis
     const pdfBuffer = createStudyNotePDF({
       title: doc.title || 'Study Material',
       course_code: doc.course_code || 'ACADEMIC',

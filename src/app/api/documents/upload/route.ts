@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 
 export async function POST(req: Request) {
   try {
@@ -50,30 +51,53 @@ export async function POST(req: Request) {
       const arrayBuffer = await file.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
 
-      // Create uploads directory in public/uploads/documents
-      const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'documents');
-      if (!fs.existsSync(uploadDir)) {
-        fs.mkdirSync(uploadDir, { recursive: true });
-      }
-
       const safeBaseName = originalName.replace(/[^a-zA-Z0-9._-]/g, '_');
       const uniqueFileName = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}_${safeBaseName}`;
-      const destinationPath = path.join(uploadDir, uniqueFileName);
 
-      fs.writeFileSync(destinationPath, buffer);
-      filePath = `/uploads/documents/${uniqueFileName}`;
-
-      // Optional: also attempt to upload to Supabase storage if bucket exists
+      // A. Try saving to Supabase Storage Bucket
+      let storageUploaded = false;
       try {
-        await supabase.storage.from('documents').upload(uniqueFileName, buffer, {
-          contentType: file.type || 'application/octet-stream',
-          upsert: true,
-        });
+        const { error: storageErr } = await supabase.storage
+          .from('documents')
+          .upload(uniqueFileName, buffer, {
+            contentType: file.type || 'application/octet-stream',
+            upsert: true,
+          });
+
+        if (!storageErr) {
+          storageUploaded = true;
+          const { data: publicUrlData } = supabase.storage
+            .from('documents')
+            .getPublicUrl(uniqueFileName);
+          filePath = publicUrlData?.publicUrl || `documents/${uniqueFileName}`;
+        }
       } catch (storageErr) {
-        console.warn('Supabase storage bucket upload notice (saved to local store):', storageErr);
+        console.warn('Supabase storage bucket notice:', storageErr);
+      }
+
+      // B. If not in Supabase storage, save to serverless writable /tmp directory or base64 data URI
+      if (!storageUploaded) {
+        try {
+          const tempDir = path.join(os.tmpdir(), 'snh_uploads');
+          if (!fs.existsSync(tempDir)) {
+            fs.mkdirSync(tempDir, { recursive: true });
+          }
+          const destinationPath = path.join(tempDir, uniqueFileName);
+          fs.writeFileSync(destinationPath, buffer);
+          filePath = `/tmp_uploads/${uniqueFileName}`;
+        } catch (fsErr) {
+          console.warn('Filesystem temp save note:', fsErr);
+        }
+
+        // C. If file is under 6MB, also create an infallible Base64 data URI as resilient backup
+        if (fileSize < 6000000 && (!filePath || filePath.startsWith('/tmp_uploads/'))) {
+          const mime = file.type || 'application/octet-stream';
+          const base64Data = buffer.toString('base64');
+          filePath = `data:${mime};base64,${base64Data}`;
+        }
       }
     } else {
-      filePath = `/uploads/documents/sample_${Date.now()}.${fileExt}`;
+      filePath = `documents/sample_${Date.now()}.${fileExt}`;
     }
 
     // 3. Insert document record into Supabase
