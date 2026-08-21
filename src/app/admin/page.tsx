@@ -46,23 +46,21 @@ export default function AdminPortalPage() {
       try {
         const supabase = createClient();
 
-        // 1. Pending Notes for Moderation
-        const { data: notes, error: notesErr } = await supabase
-          .from('documents')
-          .select('*, uploader:profiles(*)')
-          .eq('status', 'PENDING')
-          .order('created_at', { ascending: false });
-
-        if (notes) {
-          setPendingNotes(notes as DocumentItem[]);
-        } else if (notesErr) {
-          console.warn('Retrying document fetch without join:', notesErr);
-          const { data: rawNotes } = await supabase
+        // 1. Pending Notes for Moderation (via guaranteed API route)
+        try {
+          const res = await fetch('/api/admin/notes');
+          const data = await res.json();
+          if (data.notes) {
+            setPendingNotes(data.notes as DocumentItem[]);
+          }
+        } catch (apiErr) {
+          console.warn('API fetch failed, falling back to Supabase client:', apiErr);
+          const { data: notes } = await supabase
             .from('documents')
-            .select('*')
+            .select('*, uploader:profiles(*)')
             .eq('status', 'PENDING')
             .order('created_at', { ascending: false });
-          if (rawNotes) setPendingNotes(rawNotes as DocumentItem[]);
+          if (notes) setPendingNotes(notes as DocumentItem[]);
         }
 
         // 2. Writer profiles
@@ -77,7 +75,7 @@ export default function AdminPortalPage() {
         // 3. Disputed orders
         const { data: disputes } = await supabase
           .from('orders')
-          .select('*, client:profiles!orders_client_id_fkey(*), writer:profiles!orders_writer_id_fkey(*)')
+          .select('*')
           .eq('status', 'DISPUTED')
           .order('created_at', { ascending: false });
 
@@ -110,23 +108,41 @@ export default function AdminPortalPage() {
 
   const handleApproveNote = async (id: string) => {
     try {
-      const supabase = createClient();
-      await supabase.from('documents').update({ status: 'APPROVED' }).eq('id', id);
-      setPendingNotes((prev) => prev.filter((n) => n.id !== id));
-      showToast('Note approved and published to the live public catalog!');
+      const res = await fetch('/api/admin/notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ documentId: id, action: 'APPROVE' }),
+      });
+      if (res.ok) {
+        setPendingNotes((prev) => prev.filter((n) => n.id !== id));
+        showToast('Note approved and published to the live public catalog!');
+      } else {
+        const data = await res.json();
+        showToast(data.error || 'Failed to approve note.');
+      }
     } catch (err) {
       console.error(err);
+      showToast('Error approving note.');
     }
   };
 
   const handleRejectNote = async (id: string) => {
     try {
-      const supabase = createClient();
-      await supabase.from('documents').update({ status: 'REJECTED' }).eq('id', id);
-      setPendingNotes((prev) => prev.filter((n) => n.id !== id));
-      showToast('Note rejected and removed from moderation queue.');
+      const res = await fetch('/api/admin/notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ documentId: id, action: 'REJECT' }),
+      });
+      if (res.ok) {
+        setPendingNotes((prev) => prev.filter((n) => n.id !== id));
+        showToast('Note rejected and removed from moderation queue.');
+      } else {
+        const data = await res.json();
+        showToast(data.error || 'Failed to reject note.');
+      }
     } catch (err) {
       console.error(err);
+      showToast('Error rejecting note.');
     }
   };
 
