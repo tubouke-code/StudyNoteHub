@@ -35,6 +35,7 @@ import { PaymentModal } from '@/components/payments/PaymentModal';
 import { sanitizeChatMessage } from '@/lib/chat-sanitizer';
 import { createClient } from '@/lib/supabase/client';
 import { OrderItem, BidItem, Profile } from '@/types/database.types';
+import { Breadcrumbs } from '@/components/layout/Breadcrumbs';
 
 interface ChatMessage {
   id: string;
@@ -405,6 +406,21 @@ export default function OrderWorkspacePage({ params }: { params: { id: string } 
             <span className="text-xs font-bold">{toastNotice}</span>
           </div>
         )}
+
+        {/* Universal Breadcrumbs */}
+        <Breadcrumbs
+          items={[
+            { 
+              label: user?.role === 'WRITER' ? 'Writer Hub' : 'Hirer Dashboard', 
+              href: user?.role === 'WRITER' ? '/writer-dashboard' : '/dashboard' 
+            },
+            { 
+              label: `Order #${order.id.slice(0, 8)}`, 
+            }
+          ]}
+          backHref={user?.role === 'WRITER' ? '/writer-dashboard' : '/dashboard'}
+          backLabel={user?.role === 'WRITER' ? 'Back to Job Feed' : 'Back to Dashboard'}
+        />
 
         {/* Navigation & Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">

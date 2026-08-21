@@ -30,6 +30,7 @@ import { PaymentModal } from '@/components/payments/PaymentModal';
 import { useAuth } from '@/context/AuthContext';
 import { createClient } from '@/lib/supabase/client';
 import { DocumentItem } from '@/types/database.types';
+import { Breadcrumbs } from '@/components/layout/Breadcrumbs';
 
 export default function NoteDetailPage() {
   const params = useParams();
@@ -190,16 +191,18 @@ export default function NoteDetailPage() {
   const downloadUrl = `/api/documents/${note.id}/download`;
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
       
-      {/* Back Button */}
-      <button
-        onClick={() => router.back()}
-        className="inline-flex items-center gap-2 text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors cursor-pointer"
-      >
-        <ArrowLeft className="w-4 h-4" />
-        Back
-      </button>
+      {/* Universal Breadcrumbs */}
+      <Breadcrumbs
+        items={[
+          { label: 'Browse Notes', href: '/notes' },
+          { label: note.course_code || 'Course', href: `/notes?q=${encodeURIComponent(note.course_code || '')}` },
+          { label: note.title }
+        ]}
+        backHref="/notes"
+        backLabel="Back to Catalog"
+      />
 
       {/* Pending Banner if viewing in moderation preview */}
       {note.status === 'PENDING' && (

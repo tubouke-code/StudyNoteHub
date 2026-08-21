@@ -2,6 +2,8 @@ import type { Metadata } from 'next';
 import './globals.css';
 import { Navbar } from '@/components/layout/Navbar';
 import { Footer } from '@/components/layout/Footer';
+import { MobileBottomNav } from '@/components/layout/MobileBottomNav';
+import { AdminQuickBar } from '@/components/admin/AdminQuickBar';
 import { AuthProvider } from '@/context/AuthContext';
 
 export const metadata: Metadata = {
@@ -21,13 +23,15 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body suppressHydrationWarning className="min-h-screen flex flex-col antialiased bg-slate-50 text-slate-900 selection:bg-primary-500 selection:text-white">
+      <body suppressHydrationWarning className="min-h-screen flex flex-col antialiased bg-slate-50 text-slate-900 selection:bg-primary-500 selection:text-white pb-16 md:pb-0">
         <AuthProvider>
           <Navbar />
           <main className="flex-1">
             {children}
           </main>
           <Footer />
+          <MobileBottomNav />
+          <AdminQuickBar />
         </AuthProvider>
       </body>
     </html>
