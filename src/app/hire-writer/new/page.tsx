@@ -226,8 +226,9 @@ function OrderWizardContent() {
         is_email_verified: true,
       }, { onConflict: 'id' });
 
-      const { data: newOrder, error } = await supabase.from('orders').insert({
+      const orderPayload: Record<string, any> = {
         client_id: user.id,
+        student_id: user.id,
         writer_id: assignedWriterId || null,
         title: title.trim() || `${selectedServiceObj.name} (${selectedLevelObj.shortLabel})`,
         service_type: selectedServiceObj.name,
@@ -238,10 +239,32 @@ function OrderWizardContent() {
         deadline: new Date(Date.now() + (urgency === 'emergency' ? 1 : urgency === 'urgent' ? 2 : 7) * 24 * 60 * 60 * 1000).toISOString(),
         citation_style: citationStyle,
         instructions: `${instructions.trim() || 'Standard academic guidelines and research.'}\n\n[Required Add-ons]: ${selectedAddons.length > 0 ? selectedAddons.join(', ') : 'None'}`,
-        budget: totalBudget, // Estimated/Guide Budget
+        budget: totalBudget,
         escrow_status: 'UNPAID',
         status: 'OPEN',
-      }).select().single();
+      };
+
+      let newOrder = null;
+      const { data, error } = await supabase.from('orders').insert(orderPayload).select().single();
+      if (data) {
+        newOrder = data;
+      } else if (error) {
+        console.warn('Full order insert failed, trying with client_id:', error);
+        // Retry with client_id only or student_id only if one of the columns does not exist
+        const { data: retryData1 } = await supabase.from('orders').insert({
+          ...orderPayload,
+          student_id: undefined,
+        }).select().single();
+        if (retryData1) {
+          newOrder = retryData1;
+        } else {
+          const { data: retryData2 } = await supabase.from('orders').insert({
+            ...orderPayload,
+            client_id: undefined,
+          }).select().single();
+          if (retryData2) newOrder = retryData2;
+        }
+      }
 
       if (newOrder) {
         router.push(`/hire-writer/orders/${newOrder.id}`);

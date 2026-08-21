@@ -322,6 +322,12 @@ DROP POLICY IF EXISTS "Users and admins update orders" ON public.orders;
 CREATE POLICY "Users and admins update orders" ON public.orders FOR UPDATE 
     USING (auth.uid() = client_id OR auth.uid() = writer_id OR public.is_admin());
 
+-- Ensure both client_id and student_id exist on orders
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS client_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS student_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE;
+UPDATE public.orders SET client_id = student_id WHERE client_id IS NULL AND student_id IS NOT NULL;
+UPDATE public.orders SET student_id = client_id WHERE student_id IS NULL AND client_id IS NOT NULL;
+
 -- 11. Project Bids (Sealed / Blind Bidding System)
 DO $$ BEGIN
     CREATE TYPE bid_status AS ENUM ('PENDING', 'ACCEPTED', 'REJECTED', 'WITHDRAWN');
@@ -352,7 +358,7 @@ CREATE POLICY "Sealed bids viewable by order client and owner writer" ON public.
         auth.uid() = writer_id
         OR EXISTS (
             SELECT 1 FROM public.orders 
-            WHERE orders.id = bids.order_id AND orders.client_id = auth.uid()
+            WHERE orders.id = bids.order_id AND (orders.client_id = auth.uid() OR orders.student_id = auth.uid())
         )
         OR public.is_admin()
     );
@@ -367,7 +373,7 @@ CREATE POLICY "Writers and clients can update bids" ON public.bids FOR UPDATE
         auth.uid() = writer_id
         OR EXISTS (
             SELECT 1 FROM public.orders 
-            WHERE orders.id = bids.order_id AND orders.client_id = auth.uid()
+            WHERE orders.id = bids.order_id AND (orders.client_id = auth.uid() OR orders.student_id = auth.uid())
         )
         OR public.is_admin()
     );

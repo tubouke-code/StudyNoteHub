@@ -84,15 +84,32 @@ export default function OrderWorkspacePage({ params }: { params: { id: string } 
     try {
       const supabase = createClient();
       
-      // 1. Load Order
+      // 1. Load Order (Resilient to relation naming)
       const { data: ordData, error: ordErr } = await supabase
         .from('orders')
-        .select('*, client:profiles!orders_client_id_fkey(*), writer:profiles!orders_writer_id_fkey(*)')
+        .select('*')
         .eq('id', orderId)
         .single();
 
       if (ordData) {
-        const ord = ordData as OrderItem;
+        let writerProf = null;
+        if (ordData.writer_id) {
+          const { data: wData } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', ordData.writer_id)
+            .single();
+          writerProf = wData;
+        }
+
+        const clientIdResolved = ordData.client_id || ordData.student_id;
+        const ord = {
+          ...ordData,
+          client_id: clientIdResolved,
+          student_id: clientIdResolved,
+          writer: writerProf,
+        } as OrderItem;
+
         setOrder(ord);
         setEscrowReleased(ord.escrow_status === 'RELEASED_TO_WRITER');
 
@@ -166,7 +183,7 @@ export default function OrderWorkspacePage({ params }: { params: { id: string } 
   }, [orderId, user?.id]);
 
   // Is current user the hirer (client)?
-  const isClient = user?.id === order?.client_id;
+  const isClient = user?.id === order?.client_id || user?.id === order?.student_id;
   // Is order currently in open bidding phase?
   const isBiddingPhase = !order?.writer_id || order?.status === 'OPEN' || order?.status === 'PENDING';
 
