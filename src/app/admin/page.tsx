@@ -1,8 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
-import dynamic from 'next/dynamic';
 import { 
   Shield, 
   AlertTriangle, 
@@ -31,18 +30,17 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Download,
-  Upload
+  Trash2
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
-import { DocumentItem, OrderItem, Profile, PayoutRequest, AdminPermission } from '@/types/database.types';
+import { DocumentItem, OrderItem, Profile, PayoutRequest } from '@/types/database.types';
 import { RoleGuard } from '@/components/layout/RoleGuard';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend,
-  AreaChart, Area,
-  LineChart, Line
+  AreaChart, Area
 } from 'recharts';
 
 // ─── Analytics Data Types ────────────────────────────────────────────
@@ -80,27 +78,12 @@ const CHART_COLORS = {
   red: '#dc2626',
   sky: '#0284c7',
   violet: '#7c3aed',
-  rose: '#e11d48',
-  slate: '#64748b',
 };
-
-const PIE_COLORS = ['#4f46e5', '#059669', '#d97706', '#dc2626', '#0284c7', '#7c3aed'];
-
-// ─── Helper: Group records by month ──────────────────────────────────
-function groupByMonth(records: { created_at: string }[]): Record<string, number> {
-  const months: Record<string, number> = {};
-  records.forEach(r => {
-    const d = new Date(r.created_at);
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    months[key] = (months[key] || 0) + 1;
-  });
-  return months;
-}
 
 function getMonthLabel(key: string): string {
   const [year, month] = key.split('-');
   const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  return `${monthNames[parseInt(month) - 1]} ${year.slice(2)}`;
+  return `${monthNames[parseInt(month, 10) - 1]} ${year.slice(2)}`;
 }
 
 function getLast6Months(): string[] {
@@ -113,7 +96,6 @@ function getLast6Months(): string[] {
   return months;
 }
 
-// ─── Custom Tooltip for Charts ───────────────────────────────────────
 function CustomTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
   return (
@@ -131,251 +113,200 @@ function CustomTooltip({ active, payload, label }: any) {
 export default function AdminPortalPage() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'analytics' | 'moderation' | 'vetting' | 'disputes' | 'payouts' | 'team'>('analytics');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [docFilterStatus, setDocFilterStatus] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED'>('PENDING');
+  const [docSearchQuery, setDocSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [pendingNotes, setPendingNotes] = useState<DocumentItem[]>([]);
+  const [allNotes, setAllNotes] = useState<DocumentItem[]>([]);
   const [writerProfiles, setWriterProfiles] = useState<Profile[]>([]);
   const [disputedOrders, setDisputedOrders] = useState<OrderItem[]>([]);
   const [payouts, setPayouts] = useState<PayoutRequest[]>([]);
   const [adminTeam, setAdminTeam] = useState<Profile[]>([]);
   const [platformRevenue, setPlatformRevenue] = useState(0);
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  // ─── Fast Consolidated Data Fetching ────────────────────────────────
   const loadAdminData = useCallback(async () => {
     setIsLoading(true);
     setError(null);
+
     try {
-      const supabase = createClient();
-      let fetchErrorOccurred = false;
-      let errorMessage = '';
-
-      // 1. Pending Notes for Moderation (via guaranteed API route)
-      try {
-        const res = await fetch('/api/admin/notes');
+      // 1. Attempt ultra-fast parallel API endpoint
+      const res = await fetch('/api/admin/data');
+      if (res.ok) {
         const data = await res.json();
-        if (res.ok && data.notes) {
-          setPendingNotes(data.notes as DocumentItem[]);
-        } else {
-          throw new Error('API fetch not ok');
+        if (data.success) {
+          setAllNotes(data.notes || []);
+          setWriterProfiles(data.writers || []);
+          setDisputedOrders(data.disputes || []);
+          setAdminTeam(data.team || []);
+          setPayouts(data.payouts || []);
+
+          // Compute analytics
+          const profiles = data.allProfiles || [];
+          const orders = data.allOrders || [];
+          const txns = data.allTxns || [];
+          const docs = data.notes || [];
+
+          const totalUsers = profiles.length;
+          const totalStudents = profiles.filter((p: any) => p.role === 'STUDENT').length;
+          const totalWriters = data.writers?.length || profiles.filter((p: any) => p.role === 'WRITER').length;
+          const totalAdmins = data.team?.length || profiles.filter((p: any) => p.role === 'ADMIN').length;
+
+          const totalDocuments = docs.length;
+          const approvedDocs = docs.filter((d: any) => d.status === 'APPROVED').length;
+          const pendingDocs = docs.filter((d: any) => d.status === 'PENDING').length;
+          const rejectedDocs = docs.filter((d: any) => d.status === 'REJECTED').length;
+
+          const totalOrders = orders.length;
+          const openOrders = orders.filter((o: any) => o.status === 'OPEN').length;
+          const completedOrders = orders.filter((o: any) => o.status === 'COMPLETED').length;
+          const inProgressOrders = orders.filter((o: any) => ['ASSIGNED', 'IN_PROGRESS', 'IN_REVIEW'].includes(o.status)).length;
+          const disputedOrdersCount = orders.filter((o: any) => o.status === 'DISPUTED').length;
+          const cancelledOrders = orders.filter((o: any) => o.status === 'CANCELLED').length;
+          const totalEscrowVolume = orders.reduce((s: number, o: any) => s + (Number(o.budget) || 0), 0);
+
+          const totalRevenue = txns.filter((t: any) => t.type === 'PLATFORM_FEE').reduce((s: number, t: any) => s + (Number(t.amount) || 0), 0);
+          setPlatformRevenue(totalRevenue);
+
+          const totalNoteSales = txns.filter((t: any) => t.type === 'NOTE_PURCHASE').reduce((s: number, t: any) => s + (Number(t.amount) || 0), 0);
+          const totalPayoutsAmount = txns.filter((t: any) => t.type === 'ESCROW_PAYOUT' || t.type === 'WITHDRAWAL').reduce((s: number, t: any) => s + Math.abs(Number(t.amount) || 0), 0);
+
+          // Monthly aggregation
+          const last6 = getLast6Months();
+          const txnsByMonth: Record<string, { revenue: number; volume: number }> = {};
+          const studentsByMonth: Record<string, number> = {};
+          const writersByMonth: Record<string, number> = {};
+
+          last6.forEach(m => {
+            txnsByMonth[m] = { revenue: 0, volume: 0 };
+            studentsByMonth[m] = 0;
+            writersByMonth[m] = 0;
+          });
+
+          txns.forEach((t: any) => {
+            const d = new Date(t.created_at);
+            const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            if (txnsByMonth[key]) {
+              txnsByMonth[key].volume += Math.abs(Number(t.amount) || 0);
+              if (t.type === 'PLATFORM_FEE') {
+                txnsByMonth[key].revenue += Number(t.amount) || 0;
+              }
+            }
+          });
+
+          profiles.forEach((p: any) => {
+            const d = new Date(p.created_at);
+            const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            if (p.role === 'WRITER') {
+              if (writersByMonth[key] !== undefined) writersByMonth[key]++;
+            } else {
+              if (studentsByMonth[key] !== undefined) studentsByMonth[key]++;
+            }
+          });
+
+          const revenueByMonth = last6.map(m => ({
+            month: getMonthLabel(m),
+            revenue: txnsByMonth[m]?.revenue || 0,
+            volume: txnsByMonth[m]?.volume || 0,
+          }));
+
+          const userGrowth = last6.map(m => ({
+            month: getMonthLabel(m),
+            students: studentsByMonth[m] || 0,
+            writers: writersByMonth[m] || 0,
+          }));
+
+          const ordersByStatus = [
+            { name: 'Open', value: openOrders, color: CHART_COLORS.sky },
+            { name: 'In Progress', value: inProgressOrders, color: CHART_COLORS.indigo },
+            { name: 'Completed', value: completedOrders, color: CHART_COLORS.emerald },
+            { name: 'Disputed', value: disputedOrdersCount, color: CHART_COLORS.amber },
+            { name: 'Cancelled', value: cancelledOrders, color: CHART_COLORS.red },
+          ].filter(s => s.value > 0);
+
+          const docsByStatus = [
+            { name: 'Approved', value: approvedDocs, color: CHART_COLORS.emerald },
+            { name: 'Pending', value: pendingDocs, color: CHART_COLORS.amber },
+            { name: 'Rejected', value: rejectedDocs, color: CHART_COLORS.red },
+          ].filter(s => s.value > 0);
+
+          const instCounts: Record<string, number> = {};
+          profiles.forEach((p: any) => {
+            if (p.institution) {
+              instCounts[p.institution] = (instCounts[p.institution] || 0) + 1;
+            }
+          });
+          const topInstitutions = Object.entries(instCounts)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 8)
+            .map(([name, count]) => ({ name, count }));
+
+          const recentTransactions = txns.slice(0, 10).map((t: any) => ({
+            id: t.id,
+            type: t.type,
+            amount: Number(t.amount) || 0,
+            description: t.description || t.type,
+            date: t.created_at,
+          }));
+
+          setAnalytics({
+            totalUsers,
+            totalStudents,
+            totalWriters,
+            totalAdmins,
+            totalDocuments,
+            approvedDocs,
+            pendingDocs,
+            rejectedDocs,
+            totalOrders,
+            openOrders,
+            completedOrders,
+            inProgressOrders,
+            disputedOrders: disputedOrdersCount,
+            cancelledOrders,
+            totalRevenue,
+            totalEscrowVolume,
+            totalNoteSales,
+            totalPayouts: totalPayoutsAmount,
+            revenueByMonth,
+            ordersByStatus,
+            docsByStatus,
+            userGrowth,
+            topInstitutions,
+            recentTransactions,
+          });
+
+          setIsLoading(false);
+          return;
         }
-      } catch (apiErr) {
-        console.warn('API fetch failed, falling back to Supabase client:', apiErr);
-        fetchErrorOccurred = true;
-        errorMessage += 'Failed to fetch notes via API, using direct DB fallback. ';
-        const { data: notes } = await supabase
-          .from('documents')
-          .select('*, uploader:profiles(*)')
-          .eq('status', 'PENDING')
-          .order('created_at', { ascending: false });
-        if (notes) setPendingNotes(notes as DocumentItem[]);
       }
 
-      // 2. Writer profiles
-      const { data: writers, error: wErr } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('role', 'WRITER')
-        .order('created_at', { ascending: false });
-      
-      if (wErr) {
-        fetchErrorOccurred = true;
-        errorMessage += 'Failed to fetch writers. ';
-      } else if (writers) {
-        setWriterProfiles(writers as Profile[]);
-      }
+      // 2. Direct client parallel fallback if API fails
+      const supabase = createClient();
+      const [docsRes, writersRes, disputesRes, teamRes, payoutsRes] = await Promise.all([
+        supabase.from('documents').select('*').order('created_at', { ascending: false }),
+        supabase.from('profiles').select('*').eq('role', 'WRITER').order('created_at', { ascending: false }),
+        supabase.from('orders').select('*').eq('status', 'DISPUTED').order('created_at', { ascending: false }),
+        supabase.from('profiles').select('*').eq('role', 'ADMIN').order('created_at', { ascending: false }),
+        supabase.from('payout_requests').select('*').order('created_at', { ascending: false }),
+      ]);
 
-      // 3. Disputed orders
-      const { data: disputes, error: dErr } = await supabase
-        .from('orders')
-        .select('*')
-        .eq('status', 'DISPUTED')
-        .order('created_at', { ascending: false });
-
-      if (dErr) {
-        fetchErrorOccurred = true;
-        errorMessage += 'Failed to fetch disputes. ';
-      } else if (disputes) {
-        setDisputedOrders(disputes as OrderItem[]);
-      }
-
-      // 4. Admin Team
-      const { data: team, error: tErr } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('role', 'ADMIN')
-        .order('created_at', { ascending: false });
-
-      if (tErr) {
-        fetchErrorOccurred = true;
-        errorMessage += 'Failed to fetch admin team. ';
-      } else if (team) {
-        setAdminTeam(team as Profile[]);
-      }
-
-      // 5. Payouts
-      const { data: pendingPayouts, error: pErr } = await supabase
-        .from('payout_requests')
-        .select('*, writer:profiles(*)')
-        .eq('status', 'PENDING')
-        .order('created_at', { ascending: false });
-      
-      if (pErr) {
-        fetchErrorOccurred = true;
-        errorMessage += 'Failed to fetch payouts. ';
-      } else if (pendingPayouts) {
-        setPayouts(pendingPayouts as PayoutRequest[]);
-      }
-
-      // ─── 6. ANALYTICS DATA ────────────────────────────────────
-      // All profiles
-      const { data: allProfiles } = await supabase
-        .from('profiles')
-        .select('id, role, institution, created_at');
-      
-      const totalUsers = allProfiles?.length || 0;
-      const totalStudents = allProfiles?.filter(p => p.role === 'STUDENT').length || 0;
-      const totalWriters = writers?.length || 0;
-      const totalAdmins = team?.length || 0;
-
-      // All documents
-      const { data: allDocs } = await supabase
-        .from('documents')
-        .select('id, status, institution, price, created_at');
-      
-      const totalDocuments = allDocs?.length || 0;
-      const approvedDocs = allDocs?.filter(d => d.status === 'APPROVED').length || 0;
-      const pendingDocs = allDocs?.filter(d => d.status === 'PENDING').length || 0;
-      const rejectedDocs = allDocs?.filter(d => d.status === 'REJECTED').length || 0;
-
-      // All orders
-      const { data: allOrders } = await supabase
-        .from('orders')
-        .select('id, status, budget, escrow_status, created_at');
-      
-      const totalOrders = allOrders?.length || 0;
-      const openOrders = allOrders?.filter(o => o.status === 'OPEN').length || 0;
-      const completedOrders = allOrders?.filter(o => o.status === 'COMPLETED').length || 0;
-      const inProgressOrders = allOrders?.filter(o => ['ASSIGNED', 'IN_PROGRESS', 'IN_REVIEW'].includes(o.status)).length || 0;
-      const disputedOrdersCount = allOrders?.filter(o => o.status === 'DISPUTED').length || 0;
-      const cancelledOrders = allOrders?.filter(o => o.status === 'CANCELLED').length || 0;
-      const totalEscrowVolume = allOrders?.reduce((s, o) => s + (Number(o.budget) || 0), 0) || 0;
-
-      // All transactions
-      const { data: allTxns } = await supabase
-        .from('transactions')
-        .select('id, type, amount, description, created_at')
-        .order('created_at', { ascending: false });
-
-      const totalRevenue = allTxns?.filter(t => t.type === 'PLATFORM_FEE').reduce((s, t) => s + (Number(t.amount) || 0), 0) || 0;
-      setPlatformRevenue(totalRevenue);
-
-      const totalNoteSales = allTxns?.filter(t => t.type === 'NOTE_PURCHASE').reduce((s, t) => s + (Number(t.amount) || 0), 0) || 0;
-      const totalPayoutsAmount = allTxns?.filter(t => t.type === 'ESCROW_PAYOUT' || t.type === 'WITHDRAWAL').reduce((s, t) => s + Math.abs(Number(t.amount) || 0), 0) || 0;
-
-      // Revenue by month (last 6 months)
-      const last6 = getLast6Months();
-      const txnsByMonth: Record<string, { revenue: number; volume: number }> = {};
-      last6.forEach(m => { txnsByMonth[m] = { revenue: 0, volume: 0 }; });
-      
-      allTxns?.forEach(t => {
-        const d = new Date(t.created_at);
-        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-        if (txnsByMonth[key]) {
-          txnsByMonth[key].volume += Math.abs(Number(t.amount) || 0);
-          if (t.type === 'PLATFORM_FEE') {
-            txnsByMonth[key].revenue += Number(t.amount) || 0;
-          }
-        }
-      });
-
-      const revenueByMonth = last6.map(m => ({
-        month: getMonthLabel(m),
-        revenue: txnsByMonth[m]?.revenue || 0,
-        volume: txnsByMonth[m]?.volume || 0,
-      }));
-
-      // User growth by month
-      const studentsByMonth = groupByMonth(allProfiles?.filter(p => p.role === 'STUDENT') || []);
-      const writersByMonth = groupByMonth(allProfiles?.filter(p => p.role === 'WRITER') || []);
-      
-      const userGrowth = last6.map(m => ({
-        month: getMonthLabel(m),
-        students: studentsByMonth[m] || 0,
-        writers: writersByMonth[m] || 0,
-      }));
-
-      // Orders by status (pie chart)
-      const ordersByStatus = [
-        { name: 'Open', value: openOrders, color: CHART_COLORS.sky },
-        { name: 'In Progress', value: inProgressOrders, color: CHART_COLORS.indigo },
-        { name: 'Completed', value: completedOrders, color: CHART_COLORS.emerald },
-        { name: 'Disputed', value: disputedOrdersCount, color: CHART_COLORS.amber },
-        { name: 'Cancelled', value: cancelledOrders, color: CHART_COLORS.red },
-      ].filter(s => s.value > 0);
-
-      // Documents by status (pie chart)
-      const docsByStatus = [
-        { name: 'Approved', value: approvedDocs, color: CHART_COLORS.emerald },
-        { name: 'Pending', value: pendingDocs, color: CHART_COLORS.amber },
-        { name: 'Rejected', value: rejectedDocs, color: CHART_COLORS.red },
-      ].filter(s => s.value > 0);
-
-      // Top institutions
-      const instCounts: Record<string, number> = {};
-      allProfiles?.forEach(p => {
-        if (p.institution) {
-          instCounts[p.institution] = (instCounts[p.institution] || 0) + 1;
-        }
-      });
-      const topInstitutions = Object.entries(instCounts)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 8)
-        .map(([name, count]) => ({ name, count }));
-
-      // Recent transactions (last 10)
-      const recentTransactions = (allTxns || []).slice(0, 10).map(t => ({
-        id: t.id,
-        type: t.type,
-        amount: Number(t.amount) || 0,
-        description: t.description || t.type,
-        date: t.created_at,
-      }));
-
-      setAnalytics({
-        totalUsers,
-        totalStudents,
-        totalWriters,
-        totalAdmins,
-        totalDocuments,
-        approvedDocs,
-        pendingDocs,
-        rejectedDocs,
-        totalOrders,
-        openOrders,
-        completedOrders,
-        inProgressOrders,
-        disputedOrders: disputedOrdersCount,
-        cancelledOrders,
-        totalRevenue,
-        totalEscrowVolume,
-        totalNoteSales,
-        totalPayouts: totalPayoutsAmount,
-        revenueByMonth,
-        ordersByStatus,
-        docsByStatus,
-        userGrowth,
-        topInstitutions,
-        recentTransactions,
-      });
-
-      if (fetchErrorOccurred) {
-        setError(errorMessage.trim());
-      }
-    } catch (err) {
-      console.error('Error fetching admin data from Supabase:', err);
-      setError('An unexpected error occurred while loading admin data.');
+      if (docsRes.data) setAllNotes(docsRes.data as DocumentItem[]);
+      if (writersRes.data) setWriterProfiles(writersRes.data as Profile[]);
+      if (disputesRes.data) setDisputedOrders(disputesRes.data as OrderItem[]);
+      if (teamRes.data) setAdminTeam(teamRes.data as Profile[]);
+      if (payoutsRes.data) setPayouts(payoutsRes.data as PayoutRequest[]);
+    } catch (err: any) {
+      console.error('Error fetching admin data:', err);
+      setError('Unable to retrieve latest admin records.');
     } finally {
       setIsLoading(false);
     }
@@ -385,63 +316,78 @@ export default function AdminPortalPage() {
     loadAdminData();
   }, [loadAdminData]);
 
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  // ─── Filtered Notes Logic ──────────────────────────────────────────
+  const pendingNotesCount = useMemo(() => allNotes.filter(n => n.status === 'PENDING').length, [allNotes]);
+  const approvedNotesCount = useMemo(() => allNotes.filter(n => n.status === 'APPROVED').length, [allNotes]);
+  const rejectedNotesCount = useMemo(() => allNotes.filter(n => n.status === 'REJECTED').length, [allNotes]);
 
-  const showToast = (msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3500);
-  };
-
-  const handleApproveNote = async (id: string) => {
-    try {
-      const res = await fetch('/api/admin/notes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ documentId: id, action: 'APPROVE' }),
-      });
-      if (res.ok) {
-        setPendingNotes((prev) => prev.filter((n) => n.id !== id));
-        showToast('Note approved and published to the live public catalog!');
-      } else {
-        const data = await res.json();
-        showToast(data.error || 'Failed to approve note.');
+  const filteredNotes = useMemo(() => {
+    return allNotes.filter(note => {
+      // Status filter
+      if (docFilterStatus !== 'ALL' && note.status !== docFilterStatus) {
+        return false;
       }
-    } catch (err) {
+      // Search query filter
+      if (docSearchQuery.trim()) {
+        const q = docSearchQuery.toLowerCase();
+        const titleMatch = (note.title || '').toLowerCase().includes(q);
+        const codeMatch = (note.course_code || '').toLowerCase().includes(q);
+        const instMatch = (note.institution || '').toLowerCase().includes(q);
+        const uploaderMatch = (note.uploader?.full_name || '').toLowerCase().includes(q);
+        return titleMatch || codeMatch || instMatch || uploaderMatch;
+      }
+      return true;
+    });
+  }, [allNotes, docFilterStatus, docSearchQuery]);
+
+  // ─── Moderation Actions ────────────────────────────────────────────
+  const handleUpdateNoteStatus = async (id: string, action: 'APPROVE' | 'REJECT') => {
+    try {
+      const newStatus = action === 'APPROVE' ? 'APPROVED' : 'REJECTED';
+      const supabase = createClient();
+      const { error } = await supabase.from('documents').update({ status: newStatus }).eq('id', id);
+
+      if (error) {
+        // Fallback to API route
+        const res = await fetch('/api/admin/notes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ documentId: id, action }),
+        });
+        if (!res.ok) throw new Error('API moderation update failed');
+      }
+
+      setAllNotes(prev => prev.map(n => n.id === id ? { ...n, status: newStatus } : n));
+      showToast(action === 'APPROVE' ? 'Document approved and published to live catalog!' : 'Document marked as rejected.');
+    } catch (err: any) {
       console.error(err);
-      showToast('Error approving note.');
+      showToast('Error updating document status.');
     }
   };
 
-  const handleRejectNote = async (id: string) => {
+  const handleDeleteNote = async (id: string) => {
+    if (!window.confirm('Are you sure you want to permanently delete this document?')) return;
     try {
-      const res = await fetch('/api/admin/notes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ documentId: id, action: 'REJECT' }),
-      });
-      if (res.ok) {
-        setPendingNotes((prev) => prev.filter((n) => n.id !== id));
-        showToast('Note rejected and removed from moderation queue.');
-      } else {
-        const data = await res.json();
-        showToast(data.error || 'Failed to reject note.');
-      }
+      const supabase = createClient();
+      const { error } = await supabase.from('documents').delete().eq('id', id);
+      if (error) throw error;
+      setAllNotes(prev => prev.filter(n => n.id !== id));
+      showToast('Document permanently removed.');
     } catch (err) {
       console.error(err);
-      showToast('Error rejecting note.');
+      showToast('Failed to delete document.');
     }
   };
 
   const handleApproveWriter = async (id: string) => {
     try {
       const supabase = createClient();
-      await supabase.from('profiles').update({ is_verified_writer: true }).eq('id', id);
-      setWriterProfiles((prev) =>
-        prev.map((w) => (w.id === id ? { ...w, is_verified_writer: true } : w))
-      );
-      showToast('Writer accreditation approved! Writer can now bid on student projects.');
+      await supabase.from('profiles').update({ is_verified_writer: true, role: 'WRITER' }).eq('id', id);
+      setWriterProfiles(prev => prev.map(w => w.id === id ? { ...w, is_verified_writer: true, role: 'WRITER' } : w));
+      showToast('Writer accreditation approved!');
     } catch (err) {
       console.error(err);
+      showToast('Failed to verify writer.');
     }
   };
 
@@ -451,7 +397,7 @@ export default function AdminPortalPage() {
       const { error } = await supabase.from('payout_requests').update({ status: 'PROCESSED' }).eq('id', id);
       if (error) throw error;
       setPayouts(prev => prev.filter(p => p.id !== id));
-      showToast('Payout request approved and marked as processed.');
+      showToast('Payout approved and marked processed.');
     } catch (err) {
       console.error(err);
       showToast('Failed to approve payout.');
@@ -471,7 +417,6 @@ export default function AdminPortalPage() {
     }
   };
 
-  // Transaction type label helper
   const txnTypeLabel = (type: string) => {
     const map: Record<string, string> = {
       WALLET_DEPOSIT: 'Wallet Deposit',
@@ -524,19 +469,19 @@ export default function AdminPortalPage() {
               </div>
               <div className="flex items-center gap-3 mt-2">
                 <h1 className="text-2xl sm:text-3xl font-black text-slate-900">
-                  StudyNoteHub Governance & Moderation
+                  StudyNoteHub Governance & Operations
                 </h1>
                 <button
                   onClick={loadAdminData}
                   disabled={isLoading}
                   className="p-2 rounded-full bg-white border border-slate-200 text-slate-500 hover:text-indigo-600 hover:border-indigo-200 hover:bg-indigo-50 transition-colors disabled:opacity-50"
-                  title="Refresh Data"
+                  title="Reload Live Platform Data"
                 >
                   <RefreshCw className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
                 </button>
               </div>
               <p className="text-xs sm:text-sm text-slate-500 mt-1">
-                Platform analytics, content moderation, writer vetting, escrow disputes, and payout management
+                Real-time business analytics, study materials moderation, writer vetting, escrow arbitration & payouts
               </p>
             </div>
           </div>
@@ -546,91 +491,91 @@ export default function AdminPortalPage() {
             <div className="bg-red-50 border border-red-200 p-4 rounded-2xl flex items-start gap-3">
               <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
               <div>
-                <h3 className="text-sm font-bold text-red-800">Data Fetch Warning</h3>
+                <h3 className="text-sm font-bold text-red-800">Connection Notice</h3>
                 <p className="text-xs text-red-700/80 mt-1">{error}</p>
               </div>
             </div>
           )}
 
-          {/* Stats Grid — Top-level KPIs */}
+          {/* Top KPI Cards */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
             <div className="p-5 bg-white rounded-3xl border border-slate-200/80 shadow-xs space-y-1">
               <span className="text-xs font-bold uppercase text-slate-400">Total Users</span>
               <p className="text-2xl font-black text-slate-900">{analytics?.totalUsers || 0}</p>
-              <span className="text-[11px] text-slate-500">All Registered</span>
+              <span className="text-[11px] text-slate-500">Platform-wide</span>
             </div>
 
             <div className="p-5 bg-white rounded-3xl border border-slate-200/80 shadow-xs space-y-1">
-              <span className="text-xs font-bold uppercase text-slate-400">Pending Notes</span>
-              <p className="text-2xl font-black text-indigo-600">{pendingNotes.length}</p>
-              <span className="text-[11px] text-slate-500">Awaiting Review</span>
+              <span className="text-xs font-bold uppercase text-slate-400">Pending Review</span>
+              <p className="text-2xl font-black text-amber-600">{pendingNotesCount}</p>
+              <span className="text-[11px] text-slate-500">Materials Queue</span>
+            </div>
+
+            <div className="p-5 bg-white rounded-3xl border border-slate-200/80 shadow-xs space-y-1">
+              <span className="text-xs font-bold uppercase text-slate-400">All Materials</span>
+              <p className="text-2xl font-black text-indigo-600">{allNotes.length}</p>
+              <span className="text-[11px] text-slate-500">{approvedNotesCount} Live Published</span>
             </div>
 
             <div className="p-5 bg-white rounded-3xl border border-slate-200/80 shadow-xs space-y-1">
               <span className="text-xs font-bold uppercase text-slate-400">Active Writers</span>
               <p className="text-2xl font-black text-emerald-700">{writerProfiles.length}</p>
-              <span className="text-[11px] text-slate-500">Researchers</span>
-            </div>
-
-            <div className="p-5 bg-white rounded-3xl border border-slate-200/80 shadow-xs space-y-1">
-              <span className="text-xs font-bold uppercase text-slate-400">Total Orders</span>
-              <p className="text-2xl font-black text-sky-700">{analytics?.totalOrders || 0}</p>
-              <span className="text-[11px] text-slate-500">All Time</span>
+              <span className="text-[11px] text-slate-500">Accredited Researchers</span>
             </div>
 
             <div className="p-5 bg-white rounded-3xl border border-slate-200/80 shadow-xs space-y-1">
               <span className="text-xs font-bold uppercase text-slate-400">Escrow Disputes</span>
-              <p className="text-2xl font-black text-amber-600">{disputedOrders.length}</p>
+              <p className="text-2xl font-black text-red-600">{disputedOrders.length}</p>
               <span className="text-[11px] text-slate-500">Arbitration Queue</span>
             </div>
 
             <div className="p-5 bg-white rounded-3xl border border-slate-200/80 shadow-xs space-y-1">
-              <span className="text-xs font-bold uppercase text-slate-400">Platform Rev</span>
+              <span className="text-xs font-bold uppercase text-slate-400">Platform Revenue</span>
               <p className="text-2xl font-black text-indigo-900">{formatCurrency(platformRevenue)}</p>
-              <span className="text-[11px] text-slate-500">Fees Earned</span>
+              <span className="text-[11px] text-slate-500">Commission Earned</span>
             </div>
           </div>
 
-          {/* Tab Navigation & Content */}
+          {/* Main Navigation & Tab Content */}
           <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
             
             <div className="flex border-b border-slate-200 px-6 pt-4 gap-6 text-xs sm:text-sm font-bold overflow-x-auto">
               <button
                 onClick={() => setActiveTab('analytics')}
-                className={`pb-4 transition-colors flex items-center gap-1.5 shrink-0 ${
+                className={`pb-4 transition-colors flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
                   activeTab === 'analytics'
                     ? 'text-indigo-700 border-b-2 border-indigo-600'
                     : 'text-slate-500 hover:text-slate-900'
                 }`}
               >
-                <BarChart3 className="w-4 h-4" /> Analytics & Charts
+                <BarChart3 className="w-4 h-4" /> Platform Analytics & Charts
               </button>
 
               <button
                 onClick={() => setActiveTab('moderation')}
-                className={`pb-4 transition-colors flex items-center gap-1.5 shrink-0 ${
+                className={`pb-4 transition-colors flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
                   activeTab === 'moderation'
                     ? 'text-indigo-700 border-b-2 border-indigo-600'
                     : 'text-slate-500 hover:text-slate-900'
                 }`}
               >
-                <FileText className="w-4 h-4" /> Note Moderation ({pendingNotes.length})
+                <FileText className="w-4 h-4" /> Material Catalog & Moderation ({allNotes.length})
               </button>
 
               <button
                 onClick={() => setActiveTab('vetting')}
-                className={`pb-4 transition-colors flex items-center gap-1.5 shrink-0 ${
+                className={`pb-4 transition-colors flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
                   activeTab === 'vetting'
                     ? 'text-indigo-700 border-b-2 border-indigo-600'
                     : 'text-slate-500 hover:text-slate-900'
                 }`}
               >
-                <GraduationCap className="w-4 h-4" /> Writer Vetting ({writerProfiles.length})
+                <GraduationCap className="w-4 h-4" /> Writer Accreditation ({writerProfiles.length})
               </button>
 
               <button
                 onClick={() => setActiveTab('disputes')}
-                className={`pb-4 transition-colors flex items-center gap-1.5 shrink-0 ${
+                className={`pb-4 transition-colors flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
                   activeTab === 'disputes'
                     ? 'text-indigo-700 border-b-2 border-indigo-600'
                     : 'text-slate-500 hover:text-slate-900'
@@ -641,95 +586,92 @@ export default function AdminPortalPage() {
 
               <button
                 onClick={() => setActiveTab('payouts')}
-                className={`pb-4 transition-colors flex items-center gap-1.5 shrink-0 ${
+                className={`pb-4 transition-colors flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
                   activeTab === 'payouts'
                     ? 'text-indigo-700 border-b-2 border-indigo-600'
                     : 'text-slate-500 hover:text-slate-900'
                 }`}
               >
-                <DollarSign className="w-4 h-4" /> Pending Payouts ({payouts.length})
+                <DollarSign className="w-4 h-4" /> Writer Payouts ({payouts.length})
               </button>
 
               <button
                 onClick={() => setActiveTab('team')}
-                className={`pb-4 transition-colors flex items-center gap-1.5 shrink-0 ${
+                className={`pb-4 transition-colors flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
                   activeTab === 'team'
                     ? 'text-indigo-700 border-b-2 border-indigo-600'
                     : 'text-slate-500 hover:text-slate-900'
                 }`}
               >
-                <Users className="w-4 h-4" /> Admin Team ({adminTeam.length || 1})
+                <Users className="w-4 h-4" /> Admin Staff ({adminTeam.length || 1})
               </button>
             </div>
 
             <div className="p-6">
               {isLoading ? (
-                <div className="py-12 text-center text-slate-400 flex items-center justify-center gap-2">
+                <div className="py-16 text-center text-slate-400 flex items-center justify-center gap-2">
                   <Loader2 className="w-6 h-6 animate-spin text-indigo-600" />
-                  <span>Loading live admin data...</span>
+                  <span className="text-sm font-semibold">Loading real-time platform data...</span>
                 </div>
               ) : activeTab === 'analytics' && analytics ? (
                 /* ═══════════════════════════════════════════════════════
-                   ANALYTICS TAB — Charts & Detailed Statistics
+                   TAB 1: ANALYTICS & VISUAL CHARTS
                    ═══════════════════════════════════════════════════════ */
                 <div className="space-y-8">
-                  
-                  {/* Row 1: Financial Summary Cards */}
+                  {/* Financial Breakdown Cards */}
                   <div>
-                    <h3 className="text-sm font-bold text-slate-900 mb-4 flex items-center gap-2">
+                    <h3 className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2">
                       <TrendingUp className="w-4 h-4 text-indigo-600" />
-                      Financial Overview
+                      Financial Intelligence Overview
                     </h3>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                       <div className="p-5 rounded-2xl bg-gradient-to-br from-indigo-50 to-indigo-100/50 border border-indigo-200/50 space-y-1">
                         <span className="text-[11px] font-bold uppercase text-indigo-500">Platform Revenue</span>
                         <p className="text-xl font-black text-indigo-900">{formatCurrency(analytics.totalRevenue)}</p>
                         <span className="text-[10px] text-indigo-600 flex items-center gap-0.5">
-                          <ArrowUpRight className="w-3 h-3" /> Commission fees collected
+                          <ArrowUpRight className="w-3 h-3" /> Net commission collected
                         </span>
                       </div>
                       <div className="p-5 rounded-2xl bg-gradient-to-br from-emerald-50 to-emerald-100/50 border border-emerald-200/50 space-y-1">
-                        <span className="text-[11px] font-bold uppercase text-emerald-500">Total Note Sales</span>
+                        <span className="text-[11px] font-bold uppercase text-emerald-500">Study Note Sales</span>
                         <p className="text-xl font-black text-emerald-900">{formatCurrency(analytics.totalNoteSales)}</p>
                         <span className="text-[10px] text-emerald-600 flex items-center gap-0.5">
-                          <BookOpen className="w-3 h-3" /> Study material purchases
+                          <BookOpen className="w-3 h-3" /> Digital download purchases
                         </span>
                       </div>
                       <div className="p-5 rounded-2xl bg-gradient-to-br from-sky-50 to-sky-100/50 border border-sky-200/50 space-y-1">
                         <span className="text-[11px] font-bold uppercase text-sky-500">Escrow Volume</span>
                         <p className="text-xl font-black text-sky-900">{formatCurrency(analytics.totalEscrowVolume)}</p>
                         <span className="text-[10px] text-sky-600 flex items-center gap-0.5">
-                          <Shield className="w-3 h-3" /> Total order budgets
+                          <Shield className="w-3 h-3" /> Custom project budgets
                         </span>
                       </div>
                       <div className="p-5 rounded-2xl bg-gradient-to-br from-violet-50 to-violet-100/50 border border-violet-200/50 space-y-1">
                         <span className="text-[11px] font-bold uppercase text-violet-500">Writer Payouts</span>
                         <p className="text-xl font-black text-violet-900">{formatCurrency(analytics.totalPayouts)}</p>
                         <span className="text-[10px] text-violet-600 flex items-center gap-0.5">
-                          <ArrowDownRight className="w-3 h-3" /> Released to writers
+                          <ArrowDownRight className="w-3 h-3" /> Disbursed to writers
                         </span>
                       </div>
                     </div>
                   </div>
 
-                  {/* Row 2: Revenue & Volume Area Chart */}
+                  {/* Revenue & Volume Area Chart + User Growth Chart */}
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     <div className="p-6 rounded-2xl border border-slate-200/80 bg-white space-y-4">
-                      <div className="flex items-center justify-between">
-                        <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                          <Activity className="w-4 h-4 text-indigo-600" />
-                          Revenue & Transaction Volume (6 months)
-                        </h4>
-                      </div>
+                      <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                        <Activity className="w-4 h-4 text-indigo-600" />
+                        Monthly Revenue & Transaction Volume (6M)
+                      </h4>
                       <div className="h-64">
                         <ResponsiveContainer width="100%" height="100%">
                           <AreaChart data={analytics.revenueByMonth}>
                             <defs>
-                              <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                              <linearGradient id="colorRev" x1="0" y1="0" x2="0" y2="1">
                                 <stop offset="5%" stopColor={CHART_COLORS.indigo} stopOpacity={0.3}/>
                                 <stop offset="95%" stopColor={CHART_COLORS.indigo} stopOpacity={0}/>
                               </linearGradient>
-                              <linearGradient id="colorVolume" x1="0" y1="0" x2="0" y2="1">
+                              <linearGradient id="colorVol" x1="0" y1="0" x2="0" y2="1">
                                 <stop offset="5%" stopColor={CHART_COLORS.emerald} stopOpacity={0.2}/>
                                 <stop offset="95%" stopColor={CHART_COLORS.emerald} stopOpacity={0}/>
                               </linearGradient>
@@ -738,18 +680,17 @@ export default function AdminPortalPage() {
                             <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#94a3b8' }} />
                             <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} tickFormatter={(v) => `₦${(v / 1000).toFixed(0)}k`} />
                             <Tooltip content={<CustomTooltip />} />
-                            <Area type="monotone" dataKey="volume" name="Transaction Volume" stroke={CHART_COLORS.emerald} fill="url(#colorVolume)" strokeWidth={2} />
-                            <Area type="monotone" dataKey="revenue" name="Platform Revenue" stroke={CHART_COLORS.indigo} fill="url(#colorRevenue)" strokeWidth={2} />
+                            <Area type="monotone" dataKey="volume" name="Transaction Volume" stroke={CHART_COLORS.emerald} fill="url(#colorVol)" strokeWidth={2} />
+                            <Area type="monotone" dataKey="revenue" name="Platform Revenue" stroke={CHART_COLORS.indigo} fill="url(#colorRev)" strokeWidth={2} />
                           </AreaChart>
                         </ResponsiveContainer>
                       </div>
                     </div>
 
-                    {/* User Growth Bar Chart */}
                     <div className="p-6 rounded-2xl border border-slate-200/80 bg-white space-y-4">
                       <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                         <Users className="w-4 h-4 text-emerald-600" />
-                        New User Registrations (6 months)
+                        New User Registrations (6M)
                       </h4>
                       <div className="h-64">
                         <ResponsiveContainer width="100%" height="100%">
@@ -759,17 +700,16 @@ export default function AdminPortalPage() {
                             <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} allowDecimals={false} />
                             <Tooltip content={<CustomTooltip />} />
                             <Legend wrapperStyle={{ fontSize: '11px' }} />
-                            <Bar dataKey="students" name="Students" fill={CHART_COLORS.indigo} radius={[4, 4, 0, 0]} />
-                            <Bar dataKey="writers" name="Writers" fill={CHART_COLORS.emerald} radius={[4, 4, 0, 0]} />
+                            <Bar dataKey="students" name="Students / Hirers" fill={CHART_COLORS.indigo} radius={[4, 4, 0, 0]} />
+                            <Bar dataKey="writers" name="Writers / Researchers" fill={CHART_COLORS.emerald} radius={[4, 4, 0, 0]} />
                           </BarChart>
                         </ResponsiveContainer>
                       </div>
                     </div>
                   </div>
 
-                  {/* Row 3: Pie Charts */}
+                  {/* Distribution Charts */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {/* Orders by Status */}
                     <div className="p-6 rounded-2xl border border-slate-200/80 bg-white space-y-4">
                       <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                         <PieChartIcon className="w-4 h-4 text-sky-600" />
@@ -800,12 +740,11 @@ export default function AdminPortalPage() {
                         </div>
                       ) : (
                         <div className="h-52 flex items-center justify-center text-xs text-slate-400">
-                          No order data yet
+                          No order records found
                         </div>
                       )}
                     </div>
 
-                    {/* Documents by Status */}
                     <div className="p-6 rounded-2xl border border-slate-200/80 bg-white space-y-4">
                       <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                         <FileText className="w-4 h-4 text-amber-600" />
@@ -836,16 +775,15 @@ export default function AdminPortalPage() {
                         </div>
                       ) : (
                         <div className="h-52 flex items-center justify-center text-xs text-slate-400">
-                          No document data yet
+                          No document records found
                         </div>
                       )}
                     </div>
 
-                    {/* User Distribution */}
                     <div className="p-6 rounded-2xl border border-slate-200/80 bg-white space-y-4">
                       <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                         <Users className="w-4 h-4 text-violet-600" />
-                        User Distribution
+                        User Base Split
                       </h4>
                       <div className="h-52">
                         <ResponsiveContainer width="100%" height="100%">
@@ -876,13 +814,12 @@ export default function AdminPortalPage() {
                     </div>
                   </div>
 
-                  {/* Row 4: Top Institutions & Recent Transactions */}
+                  {/* Top Institutions & Recent Transactions Stream */}
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {/* Top Institutions Bar Chart */}
                     <div className="p-6 rounded-2xl border border-slate-200/80 bg-white space-y-4">
                       <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                         <GraduationCap className="w-4 h-4 text-indigo-600" />
-                        Top Institutions by User Count
+                        Top Institutions by User Base
                       </h4>
                       {analytics.topInstitutions.length > 0 ? (
                         <div className="h-64">
@@ -903,28 +840,27 @@ export default function AdminPortalPage() {
                       )}
                     </div>
 
-                    {/* Recent Transactions Table */}
                     <div className="p-6 rounded-2xl border border-slate-200/80 bg-white space-y-4">
                       <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                         <DollarSign className="w-4 h-4 text-emerald-600" />
-                        Recent Transactions
+                        Live Platform Transaction Audit Feed
                       </h4>
                       {analytics.recentTransactions.length > 0 ? (
-                        <div className="divide-y divide-slate-100 max-h-64 overflow-y-auto">
+                        <div className="divide-y divide-slate-100 max-h-64 overflow-y-auto pr-1">
                           {analytics.recentTransactions.map((txn) => (
-                            <div key={txn.id} className="py-3 flex items-center justify-between gap-3">
+                            <div key={txn.id} className="py-2.5 flex items-center justify-between gap-3 text-xs">
                               <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded ${txnTypeColor(txn.type)}`}>
+                                <div className="flex items-center gap-1.5">
+                                  <span className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded ${txnTypeColor(txn.type)}`}>
                                     {txnTypeLabel(txn.type)}
                                   </span>
                                 </div>
-                                <p className="text-xs text-slate-500 mt-1 truncate">
+                                <p className="text-[11px] text-slate-500 mt-0.5 truncate">
                                   {txn.description}
                                 </p>
                               </div>
                               <div className="text-right shrink-0">
-                                <p className={`text-sm font-black ${txn.amount >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
+                                <p className={`font-black ${txn.amount >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
                                   {txn.amount >= 0 ? '+' : ''}{formatCurrency(txn.amount)}
                                 </p>
                                 <p className="text-[10px] text-slate-400">{formatDate(txn.date)}</p>
@@ -939,115 +875,188 @@ export default function AdminPortalPage() {
                       )}
                     </div>
                   </div>
-
-                  {/* Row 5: Detailed Platform Stats Table */}
-                  <div className="p-6 rounded-2xl border border-slate-200/80 bg-white space-y-4">
-                    <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                      <BarChart3 className="w-4 h-4 text-slate-600" />
-                      Platform Statistics Summary
-                    </h4>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-8 gap-y-4">
-                      <div className="space-y-3">
-                        <h5 className="text-[11px] font-bold uppercase text-slate-400 border-b border-slate-100 pb-1">Users</h5>
-                        <div className="flex justify-between text-xs"><span className="text-slate-600">Total Users</span><span className="font-bold text-slate-900">{analytics.totalUsers}</span></div>
-                        <div className="flex justify-between text-xs"><span className="text-slate-600">Students</span><span className="font-bold text-indigo-700">{analytics.totalStudents}</span></div>
-                        <div className="flex justify-between text-xs"><span className="text-slate-600">Writers</span><span className="font-bold text-emerald-700">{analytics.totalWriters}</span></div>
-                        <div className="flex justify-between text-xs"><span className="text-slate-600">Admins</span><span className="font-bold text-violet-700">{analytics.totalAdmins}</span></div>
-                      </div>
-                      <div className="space-y-3">
-                        <h5 className="text-[11px] font-bold uppercase text-slate-400 border-b border-slate-100 pb-1">Documents</h5>
-                        <div className="flex justify-between text-xs"><span className="text-slate-600">Total Uploaded</span><span className="font-bold text-slate-900">{analytics.totalDocuments}</span></div>
-                        <div className="flex justify-between text-xs"><span className="text-slate-600">Approved</span><span className="font-bold text-emerald-700">{analytics.approvedDocs}</span></div>
-                        <div className="flex justify-between text-xs"><span className="text-slate-600">Pending</span><span className="font-bold text-amber-700">{analytics.pendingDocs}</span></div>
-                        <div className="flex justify-between text-xs"><span className="text-slate-600">Rejected</span><span className="font-bold text-red-700">{analytics.rejectedDocs}</span></div>
-                      </div>
-                      <div className="space-y-3">
-                        <h5 className="text-[11px] font-bold uppercase text-slate-400 border-b border-slate-100 pb-1">Orders</h5>
-                        <div className="flex justify-between text-xs"><span className="text-slate-600">Total Orders</span><span className="font-bold text-slate-900">{analytics.totalOrders}</span></div>
-                        <div className="flex justify-between text-xs"><span className="text-slate-600">Open</span><span className="font-bold text-sky-700">{analytics.openOrders}</span></div>
-                        <div className="flex justify-between text-xs"><span className="text-slate-600">In Progress</span><span className="font-bold text-indigo-700">{analytics.inProgressOrders}</span></div>
-                        <div className="flex justify-between text-xs"><span className="text-slate-600">Completed</span><span className="font-bold text-emerald-700">{analytics.completedOrders}</span></div>
-                      </div>
-                      <div className="space-y-3">
-                        <h5 className="text-[11px] font-bold uppercase text-slate-400 border-b border-slate-100 pb-1">Financials</h5>
-                        <div className="flex justify-between text-xs"><span className="text-slate-600">Platform Rev</span><span className="font-bold text-indigo-700">{formatCurrency(analytics.totalRevenue)}</span></div>
-                        <div className="flex justify-between text-xs"><span className="text-slate-600">Note Sales</span><span className="font-bold text-emerald-700">{formatCurrency(analytics.totalNoteSales)}</span></div>
-                        <div className="flex justify-between text-xs"><span className="text-slate-600">Escrow Vol</span><span className="font-bold text-sky-700">{formatCurrency(analytics.totalEscrowVolume)}</span></div>
-                        <div className="flex justify-between text-xs"><span className="text-slate-600">Payouts</span><span className="font-bold text-violet-700">{formatCurrency(analytics.totalPayouts)}</span></div>
-                      </div>
-                    </div>
-                  </div>
                 </div>
-
               ) : activeTab === 'moderation' ? (
-                pendingNotes.length === 0 ? (
-                  <div className="text-center py-12 space-y-3">
-                    <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto">
-                      <CheckCircle2 className="w-6 h-6" />
+                /* ═══════════════════════════════════════════════════════
+                   TAB 2: MATERIAL CATALOG & MODERATION (ALL NOTES)
+                   ═══════════════════════════════════════════════════════ */
+                <div className="space-y-6">
+                  {/* Status Filters & Search Bar */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="flex items-center gap-2 p-1 bg-slate-100 rounded-2xl overflow-x-auto text-xs font-bold">
+                      <button
+                        onClick={() => setDocFilterStatus('PENDING')}
+                        className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                          docFilterStatus === 'PENDING'
+                            ? 'bg-amber-500 text-white shadow-sm'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        <span>Pending Review ({pendingNotesCount})</span>
+                      </button>
+                      <button
+                        onClick={() => setDocFilterStatus('APPROVED')}
+                        className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                          docFilterStatus === 'APPROVED'
+                            ? 'bg-emerald-600 text-white shadow-sm'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        <span>Approved ({approvedNotesCount})</span>
+                      </button>
+                      <button
+                        onClick={() => setDocFilterStatus('REJECTED')}
+                        className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                          docFilterStatus === 'REJECTED'
+                            ? 'bg-red-600 text-white shadow-sm'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        <span>Rejected ({rejectedNotesCount})</span>
+                      </button>
+                      <button
+                        onClick={() => setDocFilterStatus('ALL')}
+                        className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                          docFilterStatus === 'ALL'
+                            ? 'bg-slate-900 text-white shadow-sm'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        <span>All ({allNotes.length})</span>
+                      </button>
                     </div>
-                    <h4 className="text-sm font-bold text-slate-900">Moderation Queue is Clean!</h4>
-                    <p className="text-xs text-slate-500 max-w-xs mx-auto">
-                      All study notes and pre-written final year projects have been reviewed and published.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="divide-y divide-slate-100">
-                    {pendingNotes.map((note) => (
-                      <div key={note.id} className="py-4 flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-                        <div className="space-y-1.5 flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-indigo-100 text-indigo-800">
-                              {note.course_code}
-                            </span>
-                            <span className="text-xs text-slate-400">{note.institution}</span>
-                          </div>
-                          <h4 className="text-sm font-bold text-slate-900">{note.title}</h4>
-                          {note.description && (
-                            <p className="text-xs text-slate-600 line-clamp-2">{note.description}</p>
-                          )}
-                          <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
-                            <span>Price: {Number(note.price) === 0 ? 'FREE' : formatCurrency(note.price)}</span>
-                            <span>•</span>
-                            <span>Uploader: {note.uploader?.full_name || 'Author'}</span>
-                            <span>•</span>
-                            <a 
-                              href={note.file_path}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-indigo-600 hover:text-indigo-800 flex items-center gap-1 font-medium bg-indigo-50 px-2 py-1 rounded-md transition-colors"
-                            >
-                              <ExternalLink className="w-3.5 h-3.5" /> View File
-                            </a>
-                          </div>
-                        </div>
 
-                        <div className="flex items-center gap-2 shrink-0">
-                          <button
-                            onClick={() => handleApproveNote(note.id)}
-                            className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1 shadow-xs"
-                          >
-                            <CheckCircle2 className="w-3.5 h-3.5" /> Approve & Publish
-                          </button>
-                          <button
-                            onClick={() => handleRejectNote(note.id)}
-                            className="px-3 py-2 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 font-bold text-xs"
-                          >
-                            Reject
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                    <div className="relative w-full sm:w-72">
+                      <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        value={docSearchQuery}
+                        onChange={(e) => setDocSearchQuery(e.target.value)}
+                        placeholder="Search title, course code, school..."
+                        className="w-full pl-9 pr-4 py-2 rounded-xl border border-slate-200 text-xs outline-none focus:border-indigo-500 bg-white"
+                      />
+                    </div>
                   </div>
-                )
+
+                  {filteredNotes.length === 0 ? (
+                    <div className="text-center py-16 space-y-3 bg-slate-50/50 rounded-2xl border border-slate-100">
+                      <div className="w-12 h-12 rounded-2xl bg-slate-200 text-slate-500 flex items-center justify-center mx-auto">
+                        <FileText className="w-6 h-6" />
+                      </div>
+                      <h4 className="text-sm font-bold text-slate-900">
+                        {allNotes.length === 0 ? 'No study materials in the database' : 'No documents match this filter'}
+                      </h4>
+                      <p className="text-xs text-slate-500 max-w-xs mx-auto">
+                        {allNotes.length === 0 
+                          ? 'Uploaded study materials and final year projects from writers will appear here.'
+                          : 'Try changing the status tab above or searching for another keyword.'}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-slate-100">
+                      {filteredNotes.map((note) => (
+                        <div key={note.id} className="py-4 flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                          <div className="space-y-1.5 flex-1 min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-indigo-100 text-indigo-800">
+                                {note.course_code || 'MATERIAL'}
+                              </span>
+                              <span className="text-xs text-slate-500 font-medium">{note.institution}</span>
+                              {note.level && (
+                                <span className="text-[10px] font-semibold text-slate-400 bg-slate-100 px-1.5 py-0.2 rounded">
+                                  {note.level}
+                                </span>
+                              )}
+                              {note.status === 'APPROVED' ? (
+                                <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">
+                                  ✓ Live Approved
+                                </span>
+                              ) : note.status === 'REJECTED' ? (
+                                <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-red-100 text-red-800">
+                                  ✕ Rejected
+                                </span>
+                              ) : (
+                                <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-amber-100 text-amber-800">
+                                  ⏳ Awaiting Moderation
+                                </span>
+                              )}
+                            </div>
+
+                            <h4 className="text-sm font-bold text-slate-900 leading-snug">{note.title}</h4>
+                            
+                            {note.description && (
+                              <p className="text-xs text-slate-600 line-clamp-2">{note.description}</p>
+                            )}
+
+                            <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 pt-1">
+                              <span className="font-semibold text-slate-700">
+                                Price: {Number(note.price) === 0 ? 'FREE' : formatCurrency(note.price)}
+                              </span>
+                              <span>•</span>
+                              <span>Uploader: {note.uploader?.full_name || 'Academic Writer'}</span>
+                              <span>•</span>
+                              <span>{note.downloads_count || 0} downloads</span>
+                              <span>•</span>
+                              <span>{formatDate(note.created_at)}</span>
+                              <span>•</span>
+                              {note.file_path ? (
+                                <a 
+                                  href={note.file_path}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-indigo-600 hover:text-indigo-800 flex items-center gap-1 font-bold bg-indigo-50 hover:bg-indigo-100 px-2.5 py-0.5 rounded-md transition-colors"
+                                >
+                                  <ExternalLink className="w-3 h-3" /> View / Download File
+                                </a>
+                              ) : (
+                                <span className="text-slate-400 text-[11px]">No file URL</span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Admin Action Buttons */}
+                          <div className="flex items-center gap-2 shrink-0 pt-1">
+                            {note.status !== 'APPROVED' && (
+                              <button
+                                onClick={() => handleUpdateNoteStatus(note.id, 'APPROVE')}
+                                className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1 shadow-xs transition-colors"
+                              >
+                                <CheckCircle2 className="w-3.5 h-3.5" /> Approve & Publish
+                              </button>
+                            )}
+                            {note.status !== 'REJECTED' && (
+                              <button
+                                onClick={() => handleUpdateNoteStatus(note.id, 'REJECT')}
+                                className="px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-xs transition-colors"
+                              >
+                                Reject
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleDeleteNote(note.id)}
+                              className="p-1.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 transition-colors"
+                              title="Delete permanently"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               ) : activeTab === 'vetting' ? (
+                /* ═══════════════════════════════════════════════════════
+                   TAB 3: WRITER ACCREDITATION & VETTING
+                   ═══════════════════════════════════════════════════════ */
                 writerProfiles.length === 0 ? (
-                  <div className="text-center py-12 space-y-3">
+                  <div className="text-center py-16 space-y-3">
                     <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
                       <GraduationCap className="w-6 h-6" />
                     </div>
-                    <h4 className="text-sm font-bold text-slate-900">No writer applications</h4>
+                    <h4 className="text-sm font-bold text-slate-900">No writer registrations yet</h4>
                     <p className="text-xs text-slate-500 max-w-xs mx-auto">
-                      New applicants who pay the accreditation token will appear here for verification.
+                      Writers and researchers registered on StudyNoteHub will be listed here for accreditation.
                     </p>
                   </div>
                 ) : (
@@ -1058,23 +1067,30 @@ export default function AdminPortalPage() {
                           <img
                             src={writer.avatar_url || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=150'}
                             alt={writer.full_name}
-                            className="w-10 h-10 rounded-full object-cover"
+                            className="w-10 h-10 rounded-full object-cover ring-2 ring-slate-100"
                           />
                           <div>
-                            <h4 className="text-sm font-bold text-slate-900">{writer.full_name}</h4>
-                            <p className="text-xs text-slate-500">{writer.email} • {writer.institution}</p>
+                            <div className="flex items-center gap-2">
+                              <h4 className="text-sm font-bold text-slate-900">{writer.full_name}</h4>
+                              {writer.is_verified_writer && (
+                                <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.2 rounded-full">
+                                  ✓ Verified
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-slate-500">{writer.email} • {writer.institution || 'Independent Researcher'}</p>
                           </div>
                         </div>
 
                         <div className="flex items-center gap-2">
                           {writer.is_verified_writer ? (
                             <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold flex items-center gap-1">
-                              <CheckCircle2 className="w-3 h-3" /> Accredited
+                              <CheckCircle2 className="w-3 h-3" /> Accredited Writer
                             </span>
                           ) : (
                             <button
                               onClick={() => handleApproveWriter(writer.id)}
-                              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs"
+                              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs"
                             >
                               Approve Accreditation
                             </button>
@@ -1085,43 +1101,52 @@ export default function AdminPortalPage() {
                   </div>
                 )
               ) : activeTab === 'disputes' ? (
+                /* ═══════════════════════════════════════════════════════
+                   TAB 4: ESCROW DISPUTE ARBITRATION
+                   ═══════════════════════════════════════════════════════ */
                 disputedOrders.length === 0 ? (
-                  <div className="text-center py-12 space-y-3">
+                  <div className="text-center py-16 space-y-3">
                     <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto">
                       <Shield className="w-6 h-6" />
                     </div>
-                    <h4 className="text-sm font-bold text-slate-900">Zero Active Disputes</h4>
+                    <h4 className="text-sm font-bold text-slate-900">Zero Active Escrow Disputes</h4>
                     <p className="text-xs text-slate-500 max-w-xs mx-auto">
-                      All project deliveries have been accepted smoothly without student-writer disputes.
+                      All project deliverables have proceeded smoothly without student-writer escalation.
                     </p>
                   </div>
                 ) : (
                   <div className="divide-y divide-slate-100">
                     {disputedOrders.map((ord) => (
-                      <div key={ord.id} className="py-4 flex justify-between items-center">
+                      <div key={ord.id} className="py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                         <div>
-                          <h4 className="text-sm font-bold text-slate-900">{ord.title}</h4>
-                          <p className="text-xs text-slate-500">Escrow: {formatCurrency(ord.budget)}</p>
+                          <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-red-100 text-red-800">
+                            Dispute #{ord.id.slice(0, 8)}
+                          </span>
+                          <h4 className="text-sm font-bold text-slate-900 mt-1">{ord.title}</h4>
+                          <p className="text-xs text-slate-500">Escrow Locked: {formatCurrency(ord.budget)} • Service: {ord.service_type}</p>
                         </div>
                         <Link
                           href={`/hire-writer/orders/${ord.id}`}
-                          className="px-4 py-2 rounded-xl bg-amber-600 text-white text-xs font-bold"
+                          className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-xs flex items-center gap-1"
                         >
-                          Review Dispute
+                          Open Dispute Workspace <ChevronRight className="w-3.5 h-3.5" />
                         </Link>
                       </div>
                     ))}
                   </div>
                 )
               ) : activeTab === 'payouts' ? (
+                /* ═══════════════════════════════════════════════════════
+                   TAB 5: WRITER PAYOUT REQUESTS
+                   ═══════════════════════════════════════════════════════ */
                 payouts.length === 0 ? (
-                  <div className="text-center py-12 space-y-3">
+                  <div className="text-center py-16 space-y-3">
                     <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
                       <DollarSign className="w-6 h-6" />
                     </div>
-                    <h4 className="text-sm font-bold text-slate-900">No Pending Payouts</h4>
+                    <h4 className="text-sm font-bold text-slate-900">No Pending Payout Requests</h4>
                     <p className="text-xs text-slate-500 max-w-xs mx-auto">
-                      All writer withdrawal requests have been processed.
+                      All writer bank withdrawals have been processed.
                     </p>
                   </div>
                 ) : (
@@ -1129,7 +1154,7 @@ export default function AdminPortalPage() {
                     {payouts.map((payout) => (
                       <div key={payout.id} className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                         <div>
-                          <h4 className="text-sm font-bold text-slate-900">{payout.writer?.full_name || 'Unknown Writer'}</h4>
+                          <h4 className="text-sm font-bold text-slate-900">{payout.writer?.full_name || 'Researcher'}</h4>
                           <p className="text-xs text-slate-500 font-mono mt-1">
                             {payout.bank_name} • {payout.account_number} • {payout.account_name}
                           </p>
@@ -1141,7 +1166,7 @@ export default function AdminPortalPage() {
                               onClick={() => handleApprovePayout(payout.id)}
                               className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1 shadow-xs"
                             >
-                              <CheckCircle2 className="w-3.5 h-3.5" /> Approve
+                              <CheckCircle2 className="w-3.5 h-3.5" /> Approve & Disburse
                             </button>
                             <button
                               onClick={() => handleRejectPayout(payout.id)}
@@ -1156,6 +1181,9 @@ export default function AdminPortalPage() {
                   </div>
                 )
               ) : (
+                /* ═══════════════════════════════════════════════════════
+                   TAB 6: ADMIN STAFF
+                   ═══════════════════════════════════════════════════════ */
                 <div className="divide-y divide-slate-100">
                   <div className="py-4 flex items-center justify-between">
                     <div className="flex items-center gap-3">

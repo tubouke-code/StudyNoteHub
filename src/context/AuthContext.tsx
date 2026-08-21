@@ -1,12 +1,13 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { Profile, UserRole } from '@/types/database.types';
 import { createClient } from '@/lib/supabase/client';
 
 interface AuthContextType {
   user: Profile | null;
   isLoggedIn: boolean;
+  isLoading: boolean;
   login: (role?: UserRole, customEmail?: string) => void;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
@@ -17,9 +18,26 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<Profile | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  // Function to fetch real profile from Supabase
-  const syncSupabaseProfile = async () => {
+  // Eagerly restore session from localStorage on initial client mount
+  useEffect(() => {
+    try {
+      const cached = localStorage.getItem('snh_auth_session');
+      if (cached) {
+        const parsed = JSON.parse(cached) as Profile;
+        if (parsed && parsed.id) {
+          setUser(parsed);
+          setIsLoggedIn(true);
+        }
+      }
+    } catch (e) {
+      console.warn('Error reading cached session:', e);
+    }
+  }, []);
+
+  // Function to fetch and sync real profile from Supabase
+  const syncSupabaseProfile = useCallback(async () => {
     try {
       const supabase = createClient();
 
@@ -51,7 +69,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           .from('profiles')
           .select('*')
           .eq('id', authUser.id)
-          .single();
+          .maybeSingle();
 
         let role: UserRole = 'STUDENT';
         let admin_permission = undefined;
@@ -60,7 +78,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (email === 'orukari878@gmail.com' || profile?.role === 'ADMIN' || profile?.admin_permission) {
           role = 'ADMIN';
           admin_permission = profile?.admin_permission || 'SUPER_ADMIN';
-        } else if (profile?.role === 'WRITER' || authUser.user_metadata?.role === 'WRITER') {
+        } else if (profile?.role === 'WRITER' || authUser.user_metadata?.role === 'WRITER' || profile?.is_verified_writer) {
           role = 'WRITER';
         } else {
           role = (profile?.role as UserRole) || 'STUDENT';
@@ -94,7 +112,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           department: profile?.department,
           bio: profile?.bio,
           wallet_balance: Number(profile?.wallet_balance) || 0,
-          is_verified_writer: Boolean(profile?.is_verified_writer) || role === 'ADMIN',
+          is_verified_writer: Boolean(profile?.is_verified_writer) || role === 'ADMIN' || role === 'WRITER',
           is_email_verified: isVerified,
           writer_skills: profile?.writer_skills || [],
           writer_rating: profile?.writer_rating || 5.0,
@@ -106,33 +124,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(activeProfile);
         setIsLoggedIn(true);
         localStorage.setItem('snh_auth_session', JSON.stringify(activeProfile));
-
-        // If user is not verified and is currently on protected or entry routes, redirect to /verify-email
-        if (!isVerified && typeof window !== 'undefined') {
-          const pathname = window.location.pathname;
-          if (
-            pathname.startsWith('/dashboard') ||
-            pathname.startsWith('/writer-dashboard') ||
-            pathname.startsWith('/hire-writer/new') ||
-            pathname.startsWith('/notes/upload')
-          ) {
-            window.location.href = `/verify-email?email=${encodeURIComponent(email)}`;
-          }
-        }
+        setIsLoading(false);
         return;
       } else {
         // No active session
         setUser(null);
         setIsLoggedIn(false);
         localStorage.removeItem('snh_auth_session');
+        setIsLoading(false);
       }
     } catch (err) {
       console.error('Error syncing Supabase auth session:', err);
       setUser(null);
       setIsLoggedIn(false);
       localStorage.removeItem('snh_auth_session');
+      setIsLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     syncSupabaseProfile();
@@ -146,13 +154,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(null);
         setIsLoggedIn(false);
         localStorage.removeItem('snh_auth_session');
+        setIsLoading(false);
       }
     });
 
     return () => {
       subscription.unsubscribe();
     };
-  }, []);
+  }, [syncSupabaseProfile]);
 
   const login = (role: UserRole = 'STUDENT', customEmail?: string) => {
     syncSupabaseProfile();
@@ -168,10 +177,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     setIsLoggedIn(false);
     localStorage.removeItem('snh_auth_session');
+    setIsLoading(false);
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoggedIn, login, logout, refreshUser: syncSupabaseProfile }}>
+    <AuthContext.Provider value={{ user, isLoggedIn, isLoading, login, logout, refreshUser: syncSupabaseProfile }}>
       {children}
     </AuthContext.Provider>
   );

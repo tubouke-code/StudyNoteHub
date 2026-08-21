@@ -8,7 +8,6 @@ import {
   Wallet, 
   Download, 
   ChevronRight, 
-  ArrowRight,
   Loader2
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -42,26 +41,26 @@ export default function StudentDashboardPage() {
       try {
         const supabase = createClient();
 
-        // 1. Fetch user's orders
-        const { data: userOrders } = await supabase
-          .from('orders')
-          .select('*, writer:profiles!orders_writer_id_fkey(*)')
-          .eq('client_id', user.id)
-          .order('created_at', { ascending: false });
+        // Parallel data loading for speed
+        const [ordersRes, purchasesRes] = await Promise.all([
+          supabase
+            .from('orders')
+            .select('*, writer:profiles!orders_writer_id_fkey(*)')
+            .eq('client_id', user.id)
+            .order('created_at', { ascending: false }),
+          supabase
+            .from('document_purchases')
+            .select('*, document:documents(*, uploader:profiles(*))')
+            .eq('buyer_id', user.id)
+            .order('created_at', { ascending: false })
+        ]);
 
-        if (userOrders) {
-          setOrders(userOrders as OrderItem[]);
+        if (ordersRes.data) {
+          setOrders(ordersRes.data as OrderItem[]);
         }
 
-        // 2. Fetch purchased notes
-        const { data: purchases } = await supabase
-          .from('document_purchases')
-          .select('*, document:documents(*, uploader:profiles(*))')
-          .eq('buyer_id', user.id)
-          .order('created_at', { ascending: false });
-
-        if (purchases) {
-          setPurchasedNotes(purchases);
+        if (purchasesRes.data) {
+          setPurchasedNotes(purchasesRes.data);
         }
       } catch (err) {
         console.error('Error fetching dashboard data:', err);
@@ -88,7 +87,7 @@ export default function StudentDashboardPage() {
                 Welcome back, {user?.full_name || 'Student'}!
               </h1>
               <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-                Track your project orders, view purchased materials, and manage your wallet
+                Track your academic project orders, access purchased study materials, and manage your wallet
               </p>
             </div>
 
@@ -289,16 +288,6 @@ export default function StudentDashboardPage() {
                 )
               )}
             </div>
-          </div>
-          
-          {/* Apply to earn as a writer subtle link */}
-          <div className="flex justify-center pt-4">
-            <Link 
-              href="/writer-dashboard" 
-              className="text-xs font-medium text-slate-500 hover:text-slate-800 flex items-center gap-1 transition-colors"
-            >
-              Are you a researcher? Apply to earn as a writer <ArrowRight className="w-3.5 h-3.5" />
-            </Link>
           </div>
 
         </div>

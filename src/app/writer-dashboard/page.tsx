@@ -5,20 +5,11 @@ import Link from 'next/link';
 import { 
   PenTool, 
   DollarSign, 
-  Clock, 
   CheckCircle2, 
   AlertCircle, 
   ChevronRight, 
   BookOpen, 
   UploadCloud, 
-  Sparkles,
-  FileText,
-  TrendingUp,
-  MessageSquare,
-  ShieldCheck,
-  Lock,
-  ArrowRight,
-  GraduationCap,
   Loader2
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -41,7 +32,7 @@ export default function WriterDashboardPage() {
   const [myUploads, setMyUploads] = useState<DocumentItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Check if user is a verified writer or admin
+  // Check if user is an accredited writer or admin
   const isVerified = user?.role === 'WRITER' || user?.role === 'ADMIN' || Boolean(user?.is_verified_writer);
 
   useEffect(() => {
@@ -50,57 +41,60 @@ export default function WriterDashboardPage() {
         router.push(`/verify-email?email=${encodeURIComponent(user.email)}`);
         return;
       }
+
+      if (!user) {
+        setIsLoading(false);
+        return;
+      }
+
       try {
         const supabase = createClient();
 
-        // 1. Fetch assigned projects for current writer
-        if (user) {
-          const { data: assigned } = await supabase
+        // Parallel data loading for speed (< 300ms)
+        const [assignedRes, bidsRes, uploadsRes, openRes] = await Promise.all([
+          supabase
             .from('orders')
             .select('*, client:profiles!orders_client_id_fkey(*)')
             .eq('writer_id', user.id)
-            .order('created_at', { ascending: false });
+            .order('created_at', { ascending: false }),
 
-          if (assigned) {
-            setAssignedOrders(assigned as OrderItem[]);
-          }
-
-          // Fetch bids submitted by this writer
-          const { data: bidsData } = await supabase
+          supabase
             .from('bids')
             .select('*')
-            .eq('writer_id', user.id);
+            .eq('writer_id', user.id),
 
-          if (bidsData) {
-            const bidsMap: Record<string, any> = {};
-            bidsData.forEach((b: any) => {
-              bidsMap[b.order_id] = b;
-            });
-            setMyBids(bidsMap);
-          }
-          
-          // Fetch my uploads
-          const { data: uploads } = await supabase
+          supabase
             .from('documents')
             .select('*')
             .eq('uploader_id', user.id)
-            .order('created_at', { ascending: false });
-            
-          if (uploads) {
-            setMyUploads(uploads as DocumentItem[]);
-          }
+            .order('created_at', { ascending: false }),
+
+          supabase
+            .from('orders')
+            .select('*, client:profiles!orders_client_id_fkey(*)')
+            .in('status', ['OPEN', 'PENDING'])
+            .is('writer_id', null)
+            .order('created_at', { ascending: false })
+        ]);
+
+        if (assignedRes.data) {
+          setAssignedOrders(assignedRes.data as OrderItem[]);
         }
 
-        // 2. Fetch open unassigned jobs for bidding
-        const { data: open } = await supabase
-          .from('orders')
-          .select('*, client:profiles!orders_client_id_fkey(*)')
-          .in('status', ['OPEN', 'PENDING'])
-          .is('writer_id', null)
-          .order('created_at', { ascending: false });
+        if (bidsRes.data) {
+          const bidsMap: Record<string, any> = {};
+          bidsRes.data.forEach((b: any) => {
+            bidsMap[b.order_id] = b;
+          });
+          setMyBids(bidsMap);
+        }
 
-        if (open) {
-          setOpenJobs(open as OrderItem[]);
+        if (uploadsRes.data) {
+          setMyUploads(uploadsRes.data as DocumentItem[]);
+        }
+
+        if (openRes.data) {
+          setOpenJobs(openRes.data as OrderItem[]);
         }
       } catch (err) {
         console.error('Error loading writer dashboard data:', err);
@@ -129,7 +123,7 @@ export default function WriterDashboardPage() {
                 </span>
                 {isVerified && (
                   <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-800 bg-emerald-100 px-2.5 py-0.5 rounded-full">
-                    <CheckCircle2 className="w-3.5 h-3.5" /> Verified
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Accredited
                   </span>
                 )}
               </div>
@@ -137,7 +131,7 @@ export default function WriterDashboardPage() {
                 Writer Operations Center
               </h1>
               <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-                Deliver assigned academic projects, bid on open student tasks, and track 85% payouts
+                Deliver assigned academic projects, bid on open student tasks, and manage 90% note royalties
               </p>
             </div>
 
@@ -147,7 +141,7 @@ export default function WriterDashboardPage() {
                 className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-md transition-all"
               >
                 <UploadCloud className="w-4 h-4" />
-                Upload Complete Projects (90% Cut)
+                Upload Project Material (90% Cut)
               </Link>
 
               <Link
@@ -197,17 +191,15 @@ export default function WriterDashboardPage() {
             </div>
 
             <div className="p-6 bg-white rounded-3xl border border-slate-200/80 shadow-xs space-y-1">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">My Uploads</span>
-              <p className="text-3xl font-black text-slate-900 mt-2">
-                {myUploads.length}
-              </p>
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">My Uploaded Works</span>
+              <p className="text-3xl font-black text-slate-900 mt-2">{myUploads.length}</p>
               <span className="text-[11px] text-slate-500 font-semibold block">{approvedUploads} Approved • {pendingUploads} Pending</span>
             </div>
 
             <div className="p-6 bg-white rounded-3xl border border-slate-200/80 shadow-xs space-y-1">
               <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Net Wallet Balance</span>
               <p className="text-3xl font-black text-emerald-700 mt-2">{formatCurrency(user?.wallet_balance || 0)}</p>
-              <span className="text-[11px] text-emerald-700 font-semibold block">85% Net Escrow Cut</span>
+              <span className="text-[11px] text-emerald-700 font-semibold block">85% Project / 90% Note Royalty</span>
             </div>
           </div>
 
@@ -245,7 +237,7 @@ export default function WriterDashboardPage() {
                     : 'text-slate-500 hover:text-slate-900'
                 }`}
               >
-                <UploadCloud className="w-4 h-4" /> My Uploads ({myUploads.length})
+                <UploadCloud className="w-4 h-4" /> My Study Materials ({myUploads.length})
               </button>
             </div>
 
@@ -353,13 +345,13 @@ export default function WriterDashboardPage() {
                     </div>
                     <h4 className="text-sm font-bold text-slate-900">You haven't uploaded any study materials yet.</h4>
                     <p className="text-xs text-slate-500 max-w-xs mx-auto">
-                      Share your completed projects and earn passively.
+                      Monetize your semester notes, past exams, or complete final year projects for 90% royalties.
                     </p>
                     <Link
                       href="/notes/upload"
                       className="inline-flex mt-2 px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all"
                     >
-                      Upload New Material
+                      Upload New Material & Earn
                     </Link>
                   </div>
                 ) : (
