@@ -116,7 +116,7 @@ export function Navbar() {
     if (!user) return 'Dashboard';
     if (user.role === 'ADMIN') return 'Admin Portal';
     if (user.role === 'WRITER') return 'Writer Hub';
-    return 'My Dashboard';
+    return 'Hirer Dashboard';
   };
 
   return (
@@ -199,7 +199,8 @@ export function Navbar() {
           <div className="hidden sm:flex items-center gap-3">
             {isAuthReady ? (
               <>
-                {/* Upload Button */}
+                {/* Upload Button - Only for Writers & Admins */}
+                {(user.role === 'WRITER' || user.role === 'ADMIN' || user.is_verified_writer) && (
                 <Link
                   href="/notes/upload"
                   className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-slate-700 border border-slate-300 hover:border-slate-400 hover:bg-slate-50 transition-all shadow-xs"
@@ -207,6 +208,7 @@ export function Navbar() {
                   <UploadCloud className="w-3.5 h-3.5 text-slate-600" />
                   Upload & Earn
                 </Link>
+                )}
 
                 {/* Notifications Bell */}
                 <div className="relative">
