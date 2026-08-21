@@ -315,7 +315,6 @@ DROP POLICY IF EXISTS "Orders viewable by client writer and admin" ON public.ord
 CREATE POLICY "Orders viewable by client writer and admin" ON public.orders FOR SELECT 
     USING (
         status = 'OPEN' 
-        OR status = 'PENDING'
         OR auth.uid() = client_id 
         OR auth.uid() = student_id 
         OR auth.uid() = writer_id 
