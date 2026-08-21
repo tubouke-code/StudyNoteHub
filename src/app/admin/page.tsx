@@ -113,12 +113,13 @@ function CustomTooltip({ active, payload, label }: any) {
 export default function AdminPortalPage() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'analytics' | 'moderation' | 'vetting' | 'disputes' | 'payouts' | 'team'>('analytics');
-  const [docFilterStatus, setDocFilterStatus] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED'>('PENDING');
+  const [docFilterStatus, setDocFilterStatus] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED'>('ALL');
   const [docSearchQuery, setDocSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [allNotes, setAllNotes] = useState<DocumentItem[]>([]);
+  const [allProfiles, setAllProfiles] = useState<Profile[]>([]);
   const [writerProfiles, setWriterProfiles] = useState<Profile[]>([]);
   const [disputedOrders, setDisputedOrders] = useState<OrderItem[]>([]);
   const [payouts, setPayouts] = useState<PayoutRequest[]>([]);
@@ -132,181 +133,197 @@ export default function AdminPortalPage() {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // ─── Fast Consolidated Data Fetching ────────────────────────────────
+  // ─── Fast Robust Data Fetching ──────────────────────────────────────
   const loadAdminData = useCallback(async () => {
     setIsLoading(true);
     setError(null);
 
     try {
-      // 1. Attempt ultra-fast parallel API endpoint
-      const res = await fetch('/api/admin/data');
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) {
-          setAllNotes(data.notes || []);
-          setWriterProfiles(data.writers || []);
-          setDisputedOrders(data.disputes || []);
-          setAdminTeam(data.team || []);
-          setPayouts(data.payouts || []);
-
-          // Compute analytics
-          const profiles = data.allProfiles || [];
-          const orders = data.allOrders || [];
-          const txns = data.allTxns || [];
-          const docs = data.notes || [];
-
-          const totalUsers = profiles.length;
-          const totalStudents = profiles.filter((p: any) => p.role === 'STUDENT').length;
-          const totalWriters = data.writers?.length || profiles.filter((p: any) => p.role === 'WRITER').length;
-          const totalAdmins = data.team?.length || profiles.filter((p: any) => p.role === 'ADMIN').length;
-
-          const totalDocuments = docs.length;
-          const approvedDocs = docs.filter((d: any) => d.status === 'APPROVED').length;
-          const pendingDocs = docs.filter((d: any) => d.status === 'PENDING').length;
-          const rejectedDocs = docs.filter((d: any) => d.status === 'REJECTED').length;
-
-          const totalOrders = orders.length;
-          const openOrders = orders.filter((o: any) => o.status === 'OPEN').length;
-          const completedOrders = orders.filter((o: any) => o.status === 'COMPLETED').length;
-          const inProgressOrders = orders.filter((o: any) => ['ASSIGNED', 'IN_PROGRESS', 'IN_REVIEW'].includes(o.status)).length;
-          const disputedOrdersCount = orders.filter((o: any) => o.status === 'DISPUTED').length;
-          const cancelledOrders = orders.filter((o: any) => o.status === 'CANCELLED').length;
-          const totalEscrowVolume = orders.reduce((s: number, o: any) => s + (Number(o.budget) || 0), 0);
-
-          const totalRevenue = txns.filter((t: any) => t.type === 'PLATFORM_FEE').reduce((s: number, t: any) => s + (Number(t.amount) || 0), 0);
-          setPlatformRevenue(totalRevenue);
-
-          const totalNoteSales = txns.filter((t: any) => t.type === 'NOTE_PURCHASE').reduce((s: number, t: any) => s + (Number(t.amount) || 0), 0);
-          const totalPayoutsAmount = txns.filter((t: any) => t.type === 'ESCROW_PAYOUT' || t.type === 'WITHDRAWAL').reduce((s: number, t: any) => s + Math.abs(Number(t.amount) || 0), 0);
-
-          // Monthly aggregation
-          const last6 = getLast6Months();
-          const txnsByMonth: Record<string, { revenue: number; volume: number }> = {};
-          const studentsByMonth: Record<string, number> = {};
-          const writersByMonth: Record<string, number> = {};
-
-          last6.forEach(m => {
-            txnsByMonth[m] = { revenue: 0, volume: 0 };
-            studentsByMonth[m] = 0;
-            writersByMonth[m] = 0;
-          });
-
-          txns.forEach((t: any) => {
-            const d = new Date(t.created_at);
-            const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-            if (txnsByMonth[key]) {
-              txnsByMonth[key].volume += Math.abs(Number(t.amount) || 0);
-              if (t.type === 'PLATFORM_FEE') {
-                txnsByMonth[key].revenue += Number(t.amount) || 0;
-              }
-            }
-          });
-
-          profiles.forEach((p: any) => {
-            const d = new Date(p.created_at);
-            const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-            if (p.role === 'WRITER') {
-              if (writersByMonth[key] !== undefined) writersByMonth[key]++;
-            } else {
-              if (studentsByMonth[key] !== undefined) studentsByMonth[key]++;
-            }
-          });
-
-          const revenueByMonth = last6.map(m => ({
-            month: getMonthLabel(m),
-            revenue: txnsByMonth[m]?.revenue || 0,
-            volume: txnsByMonth[m]?.volume || 0,
-          }));
-
-          const userGrowth = last6.map(m => ({
-            month: getMonthLabel(m),
-            students: studentsByMonth[m] || 0,
-            writers: writersByMonth[m] || 0,
-          }));
-
-          const ordersByStatus = [
-            { name: 'Open', value: openOrders, color: CHART_COLORS.sky },
-            { name: 'In Progress', value: inProgressOrders, color: CHART_COLORS.indigo },
-            { name: 'Completed', value: completedOrders, color: CHART_COLORS.emerald },
-            { name: 'Disputed', value: disputedOrdersCount, color: CHART_COLORS.amber },
-            { name: 'Cancelled', value: cancelledOrders, color: CHART_COLORS.red },
-          ].filter(s => s.value > 0);
-
-          const docsByStatus = [
-            { name: 'Approved', value: approvedDocs, color: CHART_COLORS.emerald },
-            { name: 'Pending', value: pendingDocs, color: CHART_COLORS.amber },
-            { name: 'Rejected', value: rejectedDocs, color: CHART_COLORS.red },
-          ].filter(s => s.value > 0);
-
-          const instCounts: Record<string, number> = {};
-          profiles.forEach((p: any) => {
-            if (p.institution) {
-              instCounts[p.institution] = (instCounts[p.institution] || 0) + 1;
-            }
-          });
-          const topInstitutions = Object.entries(instCounts)
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 8)
-            .map(([name, count]) => ({ name, count }));
-
-          const recentTransactions = txns.slice(0, 10).map((t: any) => ({
-            id: t.id,
-            type: t.type,
-            amount: Number(t.amount) || 0,
-            description: t.description || t.type,
-            date: t.created_at,
-          }));
-
-          setAnalytics({
-            totalUsers,
-            totalStudents,
-            totalWriters,
-            totalAdmins,
-            totalDocuments,
-            approvedDocs,
-            pendingDocs,
-            rejectedDocs,
-            totalOrders,
-            openOrders,
-            completedOrders,
-            inProgressOrders,
-            disputedOrders: disputedOrdersCount,
-            cancelledOrders,
-            totalRevenue,
-            totalEscrowVolume,
-            totalNoteSales,
-            totalPayouts: totalPayoutsAmount,
-            revenueByMonth,
-            ordersByStatus,
-            docsByStatus,
-            userGrowth,
-            topInstitutions,
-            recentTransactions,
-          });
-
-          setIsLoading(false);
-          return;
-        }
-      }
-
-      // 2. Direct client parallel fallback if API fails
       const supabase = createClient();
-      const [docsRes, writersRes, disputesRes, teamRes, payoutsRes] = await Promise.all([
-        supabase.from('documents').select('*').order('created_at', { ascending: false }),
-        supabase.from('profiles').select('*').eq('role', 'WRITER').order('created_at', { ascending: false }),
+
+      // Parallel direct queries using active Supabase browser client
+      const [
+        profilesRes,
+        docsRes,
+        ordersRes,
+        txnsRes,
+        disputesRes,
+        payoutsRes
+      ] = await Promise.allSettled([
+        supabase.from('profiles').select('*').order('created_at', { ascending: false }),
+        supabase.from('documents').select('*, uploader:profiles(*)').order('created_at', { ascending: false }),
+        supabase.from('orders').select('*').order('created_at', { ascending: false }),
+        supabase.from('transactions').select('*').order('created_at', { ascending: false }),
         supabase.from('orders').select('*').eq('status', 'DISPUTED').order('created_at', { ascending: false }),
-        supabase.from('profiles').select('*').eq('role', 'ADMIN').order('created_at', { ascending: false }),
-        supabase.from('payout_requests').select('*').order('created_at', { ascending: false }),
+        supabase.from('payout_requests').select('*, writer:profiles(*)').order('created_at', { ascending: false }),
       ]);
 
-      if (docsRes.data) setAllNotes(docsRes.data as DocumentItem[]);
-      if (writersRes.data) setWriterProfiles(writersRes.data as Profile[]);
-      if (disputesRes.data) setDisputedOrders(disputesRes.data as OrderItem[]);
-      if (teamRes.data) setAdminTeam(teamRes.data as Profile[]);
-      if (payoutsRes.data) setPayouts(payoutsRes.data as PayoutRequest[]);
+      // Profiles
+      const rawProfiles = (profilesRes.status === 'fulfilled' && profilesRes.value.data) ? profilesRes.value.data as Profile[] : [];
+      setAllProfiles(rawProfiles);
+
+      const writers = rawProfiles.filter(p => p.role === 'WRITER' || p.is_verified_writer);
+      setWriterProfiles(writers);
+
+      const team = rawProfiles.filter(p => p.role === 'ADMIN' || p.email === 'orukari878@gmail.com');
+      setAdminTeam(team);
+
+      // Documents
+      let docs: DocumentItem[] = [];
+      if (docsRes.status === 'fulfilled' && docsRes.value.data) {
+        docs = docsRes.value.data as DocumentItem[];
+      } else {
+        // Fallback to raw select without join
+        const { data: rawDocs } = await supabase.from('documents').select('*').order('created_at', { ascending: false });
+        docs = (rawDocs as DocumentItem[]) || [];
+      }
+      setAllNotes(docs);
+
+      // Orders & Disputes
+      const orders = (ordersRes.status === 'fulfilled' && ordersRes.value.data) ? ordersRes.value.data as OrderItem[] : [];
+      const disputes = (disputesRes.status === 'fulfilled' && disputesRes.value.data) ? disputesRes.value.data as OrderItem[] : [];
+      setDisputedOrders(disputes);
+
+      // Transactions
+      const txns = (txnsRes.status === 'fulfilled' && txnsRes.value.data) ? txnsRes.value.data : [];
+
+      // Payouts (safely handled if table does not exist)
+      const rawPayouts = (payoutsRes.status === 'fulfilled' && payoutsRes.value.data) ? payoutsRes.value.data as PayoutRequest[] : [];
+      setPayouts(rawPayouts);
+
+      // Compute Analytics
+      const totalUsers = rawProfiles.length;
+      const totalStudents = rawProfiles.filter(p => p.role === 'STUDENT' && !p.is_verified_writer).length;
+      const totalWriters = writers.length;
+      const totalAdmins = team.length;
+
+      const totalDocuments = docs.length;
+      const approvedDocs = docs.filter(d => d.status === 'APPROVED').length;
+      const pendingDocs = docs.filter(d => d.status === 'PENDING').length;
+      const rejectedDocs = docs.filter(d => d.status === 'REJECTED').length;
+
+      const totalOrders = orders.length;
+      const openOrders = orders.filter(o => o.status === 'OPEN').length;
+      const completedOrders = orders.filter(o => o.status === 'COMPLETED').length;
+      const inProgressOrders = orders.filter(o => ['ASSIGNED', 'IN_PROGRESS', 'IN_REVIEW'].includes(o.status)).length;
+      const disputedOrdersCount = orders.filter(o => o.status === 'DISPUTED').length;
+      const cancelledOrders = orders.filter(o => o.status === 'CANCELLED').length;
+      const totalEscrowVolume = orders.reduce((s, o) => s + (Number(o.budget) || 0), 0);
+
+      const totalRevenue = txns.filter((t: any) => t.type === 'PLATFORM_FEE').reduce((s: number, t: any) => s + (Number(t.amount) || 0), 0);
+      setPlatformRevenue(totalRevenue);
+
+      const totalNoteSales = txns.filter((t: any) => t.type === 'NOTE_PURCHASE').reduce((s: number, t: any) => s + (Number(t.amount) || 0), 0);
+      const totalPayoutsAmount = txns.filter((t: any) => t.type === 'ESCROW_PAYOUT' || t.type === 'WITHDRAWAL').reduce((s: number, t: any) => s + Math.abs(Number(t.amount) || 0), 0);
+
+      // Monthly aggregation
+      const last6 = getLast6Months();
+      const txnsByMonth: Record<string, { revenue: number; volume: number }> = {};
+      const studentsByMonth: Record<string, number> = {};
+      const writersByMonth: Record<string, number> = {};
+
+      last6.forEach(m => {
+        txnsByMonth[m] = { revenue: 0, volume: 0 };
+        studentsByMonth[m] = 0;
+        writersByMonth[m] = 0;
+      });
+
+      txns.forEach((t: any) => {
+        const d = new Date(t.created_at);
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        if (txnsByMonth[key]) {
+          txnsByMonth[key].volume += Math.abs(Number(t.amount) || 0);
+          if (t.type === 'PLATFORM_FEE') {
+            txnsByMonth[key].revenue += Number(t.amount) || 0;
+          }
+        }
+      });
+
+      rawProfiles.forEach(p => {
+        const d = new Date(p.created_at);
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        if (p.role === 'WRITER' || p.is_verified_writer) {
+          if (writersByMonth[key] !== undefined) writersByMonth[key]++;
+        } else {
+          if (studentsByMonth[key] !== undefined) studentsByMonth[key]++;
+        }
+      });
+
+      const revenueByMonth = last6.map(m => ({
+        month: getMonthLabel(m),
+        revenue: txnsByMonth[m]?.revenue || 0,
+        volume: txnsByMonth[m]?.volume || 0,
+      }));
+
+      const userGrowth = last6.map(m => ({
+        month: getMonthLabel(m),
+        students: studentsByMonth[m] || 0,
+        writers: writersByMonth[m] || 0,
+      }));
+
+      const ordersByStatus = [
+        { name: 'Open', value: openOrders, color: CHART_COLORS.sky },
+        { name: 'In Progress', value: inProgressOrders, color: CHART_COLORS.indigo },
+        { name: 'Completed', value: completedOrders, color: CHART_COLORS.emerald },
+        { name: 'Disputed', value: disputedOrdersCount, color: CHART_COLORS.amber },
+        { name: 'Cancelled', value: cancelledOrders, color: CHART_COLORS.red },
+      ].filter(s => s.value > 0);
+
+      const docsByStatus = [
+        { name: 'Approved', value: approvedDocs, color: CHART_COLORS.emerald },
+        { name: 'Pending', value: pendingDocs, color: CHART_COLORS.amber },
+        { name: 'Rejected', value: rejectedDocs, color: CHART_COLORS.red },
+      ].filter(s => s.value > 0);
+
+      const instCounts: Record<string, number> = {};
+      rawProfiles.forEach(p => {
+        if (p.institution) {
+          instCounts[p.institution] = (instCounts[p.institution] || 0) + 1;
+        }
+      });
+      const topInstitutions = Object.entries(instCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 8)
+        .map(([name, count]) => ({ name, count }));
+
+      const recentTransactions = txns.slice(0, 10).map((t: any) => ({
+        id: t.id,
+        type: t.type,
+        amount: Number(t.amount) || 0,
+        description: t.description || t.type,
+        date: t.created_at,
+      }));
+
+      setAnalytics({
+        totalUsers,
+        totalStudents,
+        totalWriters,
+        totalAdmins,
+        totalDocuments,
+        approvedDocs,
+        pendingDocs,
+        rejectedDocs,
+        totalOrders,
+        openOrders,
+        completedOrders,
+        inProgressOrders,
+        disputedOrders: disputedOrdersCount,
+        cancelledOrders,
+        totalRevenue,
+        totalEscrowVolume,
+        totalNoteSales,
+        totalPayouts: totalPayoutsAmount,
+        revenueByMonth,
+        ordersByStatus,
+        docsByStatus,
+        userGrowth,
+        topInstitutions,
+        recentTransactions,
+      });
+
     } catch (err: any) {
       console.error('Error fetching admin data:', err);
-      setError('Unable to retrieve latest admin records.');
+      setError('Unable to load live admin data.');
     } finally {
       setIsLoading(false);
     }
@@ -501,8 +518,8 @@ export default function AdminPortalPage() {
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
             <div className="p-5 bg-white rounded-3xl border border-slate-200/80 shadow-xs space-y-1">
               <span className="text-xs font-bold uppercase text-slate-400">Total Users</span>
-              <p className="text-2xl font-black text-slate-900">{analytics?.totalUsers || 0}</p>
-              <span className="text-[11px] text-slate-500">Platform-wide</span>
+              <p className="text-2xl font-black text-slate-900">{analytics?.totalUsers || allProfiles.length || 0}</p>
+              <span className="text-[11px] text-slate-500">Registered Accounts</span>
             </div>
 
             <div className="p-5 bg-white rounded-3xl border border-slate-200/80 shadow-xs space-y-1">
@@ -885,6 +902,16 @@ export default function AdminPortalPage() {
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div className="flex items-center gap-2 p-1 bg-slate-100 rounded-2xl overflow-x-auto text-xs font-bold">
                       <button
+                        onClick={() => setDocFilterStatus('ALL')}
+                        className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                          docFilterStatus === 'ALL'
+                            ? 'bg-slate-900 text-white shadow-sm'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        <span>All Materials ({allNotes.length})</span>
+                      </button>
+                      <button
                         onClick={() => setDocFilterStatus('PENDING')}
                         className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
                           docFilterStatus === 'PENDING'
@@ -914,16 +941,6 @@ export default function AdminPortalPage() {
                       >
                         <span>Rejected ({rejectedNotesCount})</span>
                       </button>
-                      <button
-                        onClick={() => setDocFilterStatus('ALL')}
-                        className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
-                          docFilterStatus === 'ALL'
-                            ? 'bg-slate-900 text-white shadow-sm'
-                            : 'text-slate-600 hover:text-slate-900'
-                        }`}
-                      >
-                        <span>All ({allNotes.length})</span>
-                      </button>
                     </div>
 
                     <div className="relative w-full sm:w-72">
@@ -948,7 +965,7 @@ export default function AdminPortalPage() {
                       </h4>
                       <p className="text-xs text-slate-500 max-w-xs mx-auto">
                         {allNotes.length === 0 
-                          ? 'Uploaded study materials and final year projects from writers will appear here.'
+                          ? 'Uploaded study materials and final year projects from writers will appear here in real-time.'
                           : 'Try changing the status tab above or searching for another keyword.'}
                       </p>
                     </div>

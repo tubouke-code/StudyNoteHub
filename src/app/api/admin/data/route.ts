@@ -1,22 +1,13 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createAdminClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+    const supabase = createAdminClient();
 
-    if (!supabaseUrl || !supabaseKey) {
-      return NextResponse.json({ error: 'Supabase credentials missing' }, { status: 500 });
-    }
-
-    const supabase = createClient(supabaseUrl, supabaseKey, {
-      auth: { persistSession: false },
-    });
-
-    // Execute all queries in PARALLEL for maximum speed (< 200ms)
+    // Execute all queries in parallel
     const [
       notesRes,
       writersRes,
@@ -27,62 +18,63 @@ export async function GET() {
       allOrdersRes,
       allTxnsRes
     ] = await Promise.allSettled([
-      // 1. Fetch all documents with uploader details
+      // 1. All documents
       supabase
         .from('documents')
         .select('*, uploader:profiles(*)')
         .order('created_at', { ascending: false }),
 
-      // 2. Fetch writer profiles
+      // 2. Writer profiles
       supabase
         .from('profiles')
         .select('*')
         .or('role.eq.WRITER,is_verified_writer.eq.true')
         .order('created_at', { ascending: false }),
 
-      // 3. Fetch disputed orders
+      // 3. Disputed orders
       supabase
         .from('orders')
-        .select('*, client:profiles!orders_client_id_fkey(*), writer:profiles!orders_writer_id_fkey(*)')
+        .select('*')
         .eq('status', 'DISPUTED')
         .order('created_at', { ascending: false }),
 
-      // 4. Fetch admin team
+      // 4. Admin team
       supabase
         .from('profiles')
         .select('*')
         .eq('role', 'ADMIN')
         .order('created_at', { ascending: false }),
 
-      // 5. Fetch payout requests
+      // 5. Payout requests
       supabase
         .from('payout_requests')
         .select('*, writer:profiles(*)')
         .order('created_at', { ascending: false }),
 
-      // 6. Profiles summary
+      // 6. All profiles
       supabase
         .from('profiles')
-        .select('id, role, institution, created_at, full_name, email'),
+        .select('*')
+        .order('created_at', { ascending: false }),
 
-      // 7. Orders summary
+      // 7. All orders
       supabase
         .from('orders')
-        .select('id, status, budget, escrow_status, service_type, created_at'),
+        .select('*')
+        .order('created_at', { ascending: false }),
 
-      // 8. Transactions
+      // 8. All transactions
       supabase
         .from('transactions')
-        .select('id, type, amount, description, created_at, reference')
+        .select('*')
         .order('created_at', { ascending: false })
     ]);
 
-    // Handle documents with fallback if join failed
+    // Handle documents with resilient fallback
     let notes: any[] = [];
     if (notesRes.status === 'fulfilled' && !notesRes.value.error && notesRes.value.data) {
       notes = notesRes.value.data;
     } else {
-      // Direct raw documents fetch fallback
       const { data: rawDocs } = await supabase
         .from('documents')
         .select('*')

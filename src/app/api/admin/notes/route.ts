@@ -1,20 +1,14 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createAdminClient } from '@/lib/supabase/server';
 
 export async function GET() {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-
-    const supabase = createClient(supabaseUrl, supabaseKey, {
-      auth: { persistSession: false },
-    });
+    const supabase = createAdminClient();
 
     // 1. Fetch all pending notes for moderation
     const { data: notes, error } = await supabase
       .from('documents')
       .select('*, uploader:profiles(*)')
-      .eq('status', 'PENDING')
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -22,7 +16,6 @@ export async function GET() {
       const { data: rawNotes } = await supabase
         .from('documents')
         .select('*')
-        .eq('status', 'PENDING')
         .order('created_at', { ascending: false });
       return NextResponse.json({ success: true, notes: rawNotes || [] });
     }
@@ -43,13 +36,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Missing documentId or action' }, { status: 400 });
     }
 
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-
-    const supabase = createClient(supabaseUrl, supabaseKey, {
-      auth: { persistSession: false },
-    });
-
+    const supabase = createAdminClient();
     const newStatus = action === 'APPROVE' ? 'APPROVED' : 'REJECTED';
 
     const { data, error } = await supabase

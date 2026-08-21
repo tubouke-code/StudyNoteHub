@@ -1,35 +1,26 @@
-import { createServerClient, type CookieOptions } from '@supabase/ssr';
-import { cookies } from 'next/headers';
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 
-export function createServerComponentClient() {
-  const cookieStore = cookies();
-
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key';
-
-  return createServerClient(
-    supabaseUrl,
-    supabaseAnonKey,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value;
-        },
-        set(name: string, value: string, options: CookieOptions) {
-          try {
-            cookieStore.set({ name, value, ...options });
-          } catch (error) {
-            // Can happen in Server Components
-          }
-        },
-        remove(name: string, options: CookieOptions) {
-          try {
-            cookieStore.set({ name, value: '', ...options });
-          } catch (error) {
-            // Can happen in Server Components
-          }
-        },
-      },
-    }
-  );
+export function getValidSupabaseKey(): string {
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (
+    serviceKey &&
+    !serviceKey.includes('your-supabase-service-role-key') &&
+    !serviceKey.startsWith('your-') &&
+    serviceKey.length > 20
+  ) {
+    return serviceKey;
+  }
+  return process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 }
+
+export function createAdminClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+  const supabaseKey = getValidSupabaseKey();
+
+  return createSupabaseClient(supabaseUrl, supabaseKey, {
+    auth: { persistSession: false },
+  });
+}
+
+// Compatibility alias for webhook / server handlers
+export const createServerComponentClient = createAdminClient;
