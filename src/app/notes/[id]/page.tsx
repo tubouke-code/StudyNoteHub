@@ -60,7 +60,7 @@ export default function NoteDetailPage() {
         const supabase = createClient();
         
         // 1. Try with joined uploader profile
-        const { data: docData, error: docErr } = await supabase
+        const { data: docData } = await supabase
           .from('documents')
           .select('*, uploader:profiles(*)')
           .eq('id', noteId)
@@ -135,9 +135,15 @@ export default function NoteDetailPage() {
       setIsPaymentModalOpen(true);
       return;
     }
-    const fileUrl = getDocumentFileUrl(note.file_path);
-    if (fileUrl && fileUrl !== '#') {
-      window.open(fileUrl, '_blank');
+    window.location.href = `/api/documents/${note.id}/download`;
+  };
+
+  const handlePaymentSuccess = () => {
+    setIsPaymentModalOpen(false);
+    setIsUnlocked(true);
+    // Instant download
+    if (note) {
+      window.location.href = `/api/documents/${note.id}/download`;
     }
   };
 
@@ -181,7 +187,7 @@ export default function NoteDetailPage() {
   const isFree = Number(note.price) === 0;
   const pageCount = note.page_count || (note as any).pages_count || 12;
   const fileSize = formatFileSize(note.file_size_bytes || 2048000);
-  const fileUrl = getDocumentFileUrl(note.file_path);
+  const downloadUrl = `/api/documents/${note.id}/download`;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
@@ -189,7 +195,7 @@ export default function NoteDetailPage() {
       {/* Back Button */}
       <button
         onClick={() => router.back()}
-        className="inline-flex items-center gap-2 text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors"
+        className="inline-flex items-center gap-2 text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors cursor-pointer"
       >
         <ArrowLeft className="w-4 h-4" />
         Back
@@ -204,16 +210,12 @@ export default function NoteDetailPage() {
             </span>
             <span className="text-xs">This material is currently in the admin moderation queue awaiting public approval.</span>
           </div>
-          {fileUrl && fileUrl !== '#' && (
-            <a
-              href={fileUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shrink-0 transition-colors"
-            >
-              Open Original File
-            </a>
-          )}
+          <a
+            href={downloadUrl}
+            className="px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shrink-0 transition-colors"
+          >
+            Review Document (PDF)
+          </a>
         </div>
       )}
 
@@ -277,7 +279,7 @@ export default function NoteDetailPage() {
           <div className="flex border-b border-slate-200 gap-6 text-xs sm:text-sm font-bold">
             <button
               onClick={() => setActiveTab('PREVIEW')}
-              className={`pb-3 transition-colors flex items-center gap-1.5 ${
+              className={`pb-3 transition-colors flex items-center gap-1.5 cursor-pointer ${
                 activeTab === 'PREVIEW'
                   ? 'text-primary-700 border-b-2 border-primary-600'
                   : 'text-slate-500 hover:text-slate-900'
@@ -288,7 +290,7 @@ export default function NoteDetailPage() {
 
             <button
               onClick={() => setActiveTab('AI_CHAT')}
-              className={`pb-3 transition-colors flex items-center gap-1.5 ${
+              className={`pb-3 transition-colors flex items-center gap-1.5 cursor-pointer ${
                 activeTab === 'AI_CHAT'
                   ? 'text-indigo-600 border-b-2 border-indigo-600 font-extrabold'
                   : 'text-slate-500 hover:text-slate-900'
@@ -300,7 +302,7 @@ export default function NoteDetailPage() {
 
             <button
               onClick={() => setActiveTab('SYLLABUS')}
-              className={`pb-3 transition-colors ${
+              className={`pb-3 transition-colors cursor-pointer ${
                 activeTab === 'SYLLABUS'
                   ? 'text-primary-700 border-b-2 border-primary-600'
                   : 'text-slate-500 hover:text-slate-900'
@@ -358,7 +360,7 @@ export default function NoteDetailPage() {
                     </div>
                     <button
                       onClick={() => setIsPaymentModalOpen(true)}
-                      className="px-6 py-3 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs shadow-md shadow-primary-600/30 transition-all flex items-center gap-2"
+                      className="px-6 py-3 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs shadow-md shadow-primary-600/30 transition-all flex items-center gap-2 cursor-pointer"
                     >
                       <Lock className="w-4 h-4" />
                       Unlock for {formatCurrency(note.price)}
@@ -368,16 +370,12 @@ export default function NoteDetailPage() {
               ) : (
                 <div className="p-4 rounded-2xl bg-emerald-50 text-emerald-900 text-xs font-semibold flex items-center justify-between">
                   <span>✓ You own this material. You can download and read anytime.</span>
-                  {fileUrl && fileUrl !== '#' && (
-                    <a
-                      href={fileUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1 transition-colors"
-                    >
-                      <Download className="w-3.5 h-3.5" /> Download File
-                    </a>
-                  )}
+                  <a
+                    href={downloadUrl}
+                    className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1 transition-colors"
+                  >
+                    <Download className="w-3.5 h-3.5" /> Download PDF
+                  </a>
                 </div>
               )}
 
@@ -468,7 +466,7 @@ export default function NoteDetailPage() {
             <div className="space-y-2">
               <button
                 onClick={handleDownload}
-                className={`w-full py-3.5 rounded-xl font-bold text-xs shadow-md transition-all flex items-center justify-center gap-2 ${
+                className={`w-full py-3.5 rounded-xl font-bold text-xs shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer ${
                   isUnlocked
                     ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
                     : 'bg-primary-600 hover:bg-primary-700 text-white shadow-primary-600/30'
@@ -477,7 +475,7 @@ export default function NoteDetailPage() {
                 {isUnlocked ? (
                   <>
                     <Download className="w-4 h-4" />
-                    Download Complete File
+                    Download Complete File (PDF)
                   </>
                 ) : (
                   <>
@@ -489,7 +487,7 @@ export default function NoteDetailPage() {
 
               <button
                 onClick={handleShare}
-                className="w-full py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors flex items-center justify-center gap-1.5"
+                className="w-full py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Share2 className="w-3.5 h-3.5 text-slate-400" />}
                 {copiedLink ? 'Link Copied!' : 'Share Material with Friends'}
@@ -525,10 +523,7 @@ export default function NoteDetailPage() {
         amount={note.price}
         itemType="NOTE_PURCHASE"
         itemId={note.id}
-        onSuccess={() => {
-          setIsPaymentModalOpen(false);
-          setIsUnlocked(true);
-        }}
+        onSuccess={handlePaymentSuccess}
       />
     </div>
   );

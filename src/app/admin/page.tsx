@@ -1027,12 +1027,12 @@ export default function AdminPortalPage() {
                                 <>
                                   <span>•</span>
                                   <a 
-                                    href={getDocumentFileUrl(note.file_path)}
+                                    href={getDocumentFileUrl(note.file_path, note.id)}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="text-slate-600 hover:text-slate-900 flex items-center gap-1 font-semibold bg-slate-100 hover:bg-slate-200 px-2.5 py-0.5 rounded-md transition-colors"
                                   >
-                                    <ExternalLink className="w-3 h-3" /> View Raw File
+                                    <ExternalLink className="w-3 h-3" /> View / Download Document
                                   </a>
                                 </>
                               )}

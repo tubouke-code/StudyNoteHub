@@ -24,7 +24,10 @@ export function getAppURL(): string {
   return url.replace(/\/$/, '');
 }
 
-export function getDocumentFileUrl(filePath?: string | null): string {
+export function getDocumentFileUrl(filePath?: string | null, docId?: string | null): string {
+  if (docId) {
+    return `/api/documents/${docId}/download`;
+  }
   if (!filePath || filePath === '#') return '#';
   if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
     return filePath;
