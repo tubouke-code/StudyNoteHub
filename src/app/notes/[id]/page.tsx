@@ -66,29 +66,56 @@ export default function NoteDetailPage() {
   const isAdmin = user?.role === 'ADMIN';
 
   useEffect(() => {
+    let isMounted = true;
+
     async function loadNoteDetails() {
-      if (!noteId) return;
+      if (!noteId) {
+        setIsLoading(false);
+        return;
+      }
       setIsLoading(true);
+
       try {
         const supabase = createClient();
-        const { data, error } = await supabase
+
+        // 1. Direct fast document fetch
+        const { data: docData, error: docError } = await supabase
           .from('documents')
-          .select('*, uploader:profiles(*)')
+          .select('*')
           .eq('id', noteId)
           .maybeSingle();
 
-        if (error) {
-          console.error('Error fetching document details:', error);
-        } else if (data) {
-          setNote(data as DocumentItem);
-          // Free materials or Admin are automatically unlocked
-          if (Number(data.price) === 0 || isAdmin || (user && data.uploader_id === user.id)) {
+        if (docError) {
+          console.warn('Direct fetch note:', docError);
+        }
+
+        if (docData && isMounted) {
+          setNote(docData as DocumentItem);
+          if (Number(docData.price) === 0 || isAdmin || (user && docData.uploader_id === user.id)) {
             setIsUnlocked(true);
+          }
+
+          // Optional: Fetch uploader profile in background
+          if (docData.uploader_id) {
+            (async () => {
+              try {
+                const { data: profileData } = await supabase
+                  .from('profiles')
+                  .select('*')
+                  .eq('id', docData.uploader_id)
+                  .maybeSingle();
+                if (profileData && isMounted) {
+                  setNote((prev) => prev ? { ...prev, uploader: profileData } : null);
+                }
+              } catch (e) {
+                // ignore
+              }
+            })();
           }
         }
 
-        // Check if user already purchased
-        if (user) {
+        // 2. Check if user already purchased
+        if (user && isMounted) {
           const { data: purchase } = await supabase
             .from('document_purchases')
             .select('id')
@@ -96,18 +123,30 @@ export default function NoteDetailPage() {
             .eq('buyer_id', user.id)
             .maybeSingle();
 
-          if (purchase) {
+          if (purchase && isMounted) {
             setIsUnlocked(true);
           }
         }
       } catch (err) {
         console.error('Fetch error:', err);
       } finally {
-        setIsLoading(false);
+        if (isMounted) {
+          setIsLoading(false);
+        }
       }
     }
 
+    // Safeguard timeout to ensure page never gets stuck
+    const timeoutTimer = setTimeout(() => {
+      if (isMounted) setIsLoading(false);
+    }, 4000);
+
     loadNoteDetails();
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timeoutTimer);
+    };
   }, [noteId, user, isAdmin]);
 
   // Admin In-Page Moderation Actions

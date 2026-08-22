@@ -152,11 +152,11 @@ export default function AdminPortalPage() {
         payoutsRes
       ] = await Promise.allSettled([
         supabase.from('profiles').select('*').order('created_at', { ascending: false }),
-        supabase.from('documents').select('*, uploader:profiles(*)').order('created_at', { ascending: false }),
+        supabase.from('documents').select('*').order('created_at', { ascending: false }),
         supabase.from('orders').select('*').order('created_at', { ascending: false }),
         supabase.from('transactions').select('*').order('created_at', { ascending: false }),
         supabase.from('orders').select('*').eq('status', 'DISPUTED').order('created_at', { ascending: false }),
-        supabase.from('payout_requests').select('*, writer:profiles(*)').order('created_at', { ascending: false }),
+        supabase.from('payout_requests').select('*').order('created_at', { ascending: false }),
       ]);
 
       // Profiles
@@ -170,14 +170,9 @@ export default function AdminPortalPage() {
       setAdminTeam(team);
 
       // Documents
-      let docs: DocumentItem[] = [];
-      if (docsRes.status === 'fulfilled' && docsRes.value.data) {
-        docs = docsRes.value.data as DocumentItem[];
-      } else {
-        // Fallback to raw select without join
-        const { data: rawDocs } = await supabase.from('documents').select('*').order('created_at', { ascending: false });
-        docs = (rawDocs as DocumentItem[]) || [];
-      }
+      const docs: DocumentItem[] = (docsRes.status === 'fulfilled' && docsRes.value.data) 
+        ? (docsRes.value.data as DocumentItem[]) 
+        : [];
       setAllNotes(docs);
 
       // Orders & Disputes
@@ -384,16 +379,20 @@ export default function AdminPortalPage() {
   };
 
   const handleDeleteNote = async (id: string) => {
-    if (!window.confirm('Are you sure you want to permanently delete this document?')) return;
+    if (!window.confirm('Are you sure you want to permanently delete this document from the database? This action cannot be undone.')) return;
     try {
-      const supabase = createClient();
-      const { error } = await supabase.from('documents').delete().eq('id', id);
-      if (error) throw error;
+      const res = await fetch(`/api/admin/notes?id=${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        throw new Error(data.error || 'Failed to delete from database');
+      }
       setAllNotes(prev => prev.filter(n => n.id !== id));
-      showToast('Document permanently removed.');
-    } catch (err) {
+      showToast('Document permanently removed from database.');
+    } catch (err: any) {
       console.error(err);
-      showToast('Failed to delete document.');
+      showToast(err.message || 'Failed to delete document.');
     }
   };
 
