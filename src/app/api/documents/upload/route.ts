@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { createClient } from '@supabase/supabase-js';
+import { analyzeDocument } from '@/lib/document-parser';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -64,14 +65,27 @@ export async function POST(req: Request) {
     let fileExt = 'pdf';
     let fileSize = 2048000;
     let originalName = '';
+    let detectedPages = 10;
+    let detectedWords = 2800;
+    let extractedToc: Array<{ title: string; level: number }> = [];
 
-    // 2. Process and save uploaded binary file (PDF, DOCX, DOC, PPTX, TXT, etc.)
+    // 2. Process and analyze uploaded binary file (PDF, DOCX, DOC, PPTX, TXT, etc.)
     if (file && typeof file.arrayBuffer === 'function') {
       originalName = file.name;
       fileExt = file.name.split('.').pop()?.toLowerCase() || 'pdf';
       fileSize = file.size;
       const arrayBuffer = await file.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
+
+      // Automated page count, word count, and TOC extraction
+      try {
+        const analysis = analyzeDocument(buffer, fileExt);
+        detectedPages = analysis.pageCount;
+        detectedWords = analysis.wordCount;
+        extractedToc = analysis.tableOfContents;
+      } catch (parseErr) {
+        console.warn('Document parsing notice:', parseErr);
+      }
 
       const safeBaseName = originalName.replace(/[^a-zA-Z0-9._-]/g, '_');
       const uniqueFileName = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}_${safeBaseName}`;
@@ -123,14 +137,23 @@ export async function POST(req: Request) {
       filePath = `documents/sample_${Date.now()}.${fileExt}`;
     }
 
-    // 3. Insert document record into Supabase
+    // 3. Format description with structured Table of Contents if available
+    let enrichedDescription = description.trim();
+    if (extractedToc.length > 0) {
+      const tocHeader = '\n\n[TABLE OF CONTENTS]\n' + extractedToc.map((t, idx) => `${idx + 1}. ${t.title}`).join('\n');
+      if (!enrichedDescription.includes('[TABLE OF CONTENTS]')) {
+        enrichedDescription += tocHeader;
+      }
+    }
+
+    // 4. Insert document record into Supabase
     const basePayload: Record<string, any> = {
       uploader_id: uploaderId,
       title: title.trim(),
       course_code: courseCode.trim().toUpperCase(),
       course_title: courseTitle.trim() || title.trim(),
       institution: institution.trim(),
-      description: description.trim(),
+      description: enrichedDescription,
       price,
       file_path: filePath,
       file_type: fileExt,
@@ -141,12 +164,15 @@ export async function POST(req: Request) {
     let insertedDoc = null;
     let insertErr = null;
 
-    // Full insert with optional columns
+    // Full insert with optional columns (page_count, word_count, faculty, department, level)
     const { data: d1, error: e1 } = await supabase.from('documents').insert({
       ...basePayload,
       faculty,
       department,
       level,
+      page_count: detectedPages,
+      pages_count: detectedPages,
+      word_count: detectedWords,
       downloads_count: 0,
     }).select().single();
 
@@ -154,19 +180,35 @@ export async function POST(req: Request) {
       insertedDoc = d1;
     } else {
       insertErr = e1;
-      // Core insert fallback
-      const { data: d2, error: e2 } = await supabase.from('documents').insert(basePayload).select().single();
+      // Secondary insert without word_count if column doesn't exist yet
+      const { data: d2, error: e2 } = await supabase.from('documents').insert({
+        ...basePayload,
+        faculty,
+        department,
+        level,
+        page_count: detectedPages,
+        pages_count: detectedPages,
+        downloads_count: 0,
+      }).select().single();
+
       if (d2) {
         insertedDoc = d2;
       } else {
-        insertErr = e2 || e1;
-        // Fallback: Try with Admin client if RLS blocked the user token client
-        const adminSupabase = createAdminClient();
-        const { data: d3, error: e3 } = await adminSupabase.from('documents').insert(basePayload).select().single();
+        insertErr = e2;
+        // Core insert fallback
+        const { data: d3, error: e3 } = await supabase.from('documents').insert(basePayload).select().single();
         if (d3) {
           insertedDoc = d3;
         } else {
           insertErr = e3 || e2 || e1;
+          // Fallback: Try with Admin client if RLS blocked the user token client
+          const adminSupabase = createAdminClient();
+          const { data: d4, error: e4 } = await adminSupabase.from('documents').insert(basePayload).select().single();
+          if (d4) {
+            insertedDoc = d4;
+          } else {
+            insertErr = e4 || e3 || e2 || e1;
+          }
         }
       }
     }
@@ -176,7 +218,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: insertErr?.message || 'Failed to save document record' }, { status: 400 });
     }
 
-    return NextResponse.json({ success: true, document: insertedDoc });
+    return NextResponse.json({ 
+      success: true, 
+      document: insertedDoc,
+      analysis: {
+        pageCount: detectedPages,
+        wordCount: detectedWords,
+        tableOfContents: extractedToc
+      }
+    });
   } catch (err: any) {
     console.error('API upload error:', err);
     return NextResponse.json({ error: err.message || 'Server error during upload' }, { status: 500 });

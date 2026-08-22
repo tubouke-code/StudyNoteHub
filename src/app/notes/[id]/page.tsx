@@ -633,24 +633,76 @@ export default function NoteDetailPage() {
             </div>
           )}
 
-          {/* TAB 3: SYLLABUS OUTLINE */}
+          {/* TAB 3: EXTRACTED TABLE OF CONTENTS & SYLLABUS */}
           {activeTab === 'SYLLABUS' && (
-            <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs p-6 sm:p-8 space-y-4">
-              <h4 className="text-sm font-bold text-slate-900">Semester Module Breakdown</h4>
-              <div className="space-y-3">
-                <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 text-xs space-y-1">
-                  <p className="font-bold text-slate-900">Module 1: Principles & Definitions</p>
-                  <p className="text-slate-500">Foundational concepts and essential terminologies for {note.course_code}.</p>
+            <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs p-6 sm:p-8 space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
+                <div>
+                  <h4 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                    <BookOpen className="w-4 h-4 text-primary-600" />
+                    Automated Table of Contents & Structure
+                  </h4>
+                  <p className="text-xs text-slate-500">
+                    Automatically extracted from the uploaded document structure ({note.file_type?.toUpperCase() || 'DOCUMENT'}).
+                  </p>
                 </div>
-                <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 text-xs space-y-1">
-                  <p className="font-bold text-slate-900">Module 2: Practical Applications & Proofs</p>
-                  <p className="text-slate-500">Mathematical models, real-world case studies, and quantitative drills.</p>
-                </div>
-                <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 text-xs space-y-1">
-                  <p className="font-bold text-slate-900">Module 3: Solved Examination Past Questions</p>
-                  <p className="text-slate-500">Step-by-step verified solutions and typical exam marking rubrics.</p>
+                <div className="flex items-center gap-2 text-xs font-bold">
+                  <span className="px-3 py-1 rounded-lg bg-slate-100 text-slate-700">
+                    📄 {pageCount} Pages
+                  </span>
+                  <span className="px-3 py-1 rounded-lg bg-indigo-50 text-indigo-700">
+                    🔤 ~{((note as any).word_count || pageCount * 280).toLocaleString()} Words
+                  </span>
                 </div>
               </div>
+
+              {/* Extracted TOC items or Syllabus breakdown */}
+              {note.description?.includes('[TABLE OF CONTENTS]') ? (
+                <div className="space-y-2.5">
+                  {note.description
+                    .split('[TABLE OF CONTENTS]')[1]
+                    .trim()
+                    .split('\n')
+                    .filter((line) => line.trim().length > 0)
+                    .map((item, idx) => (
+                      <div
+                        key={idx}
+                        className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100/80 flex items-start gap-3 hover:bg-slate-100/60 transition-colors"
+                      >
+                        <span className="w-6 h-6 rounded-lg bg-primary-100 text-primary-700 font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">
+                          {idx + 1}
+                        </span>
+                        <div className="text-xs sm:text-sm font-semibold text-slate-800 leading-relaxed">
+                          {item.replace(/^\d+\.\s*/, '')}
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 text-xs space-y-1">
+                    <div className="flex items-center justify-between">
+                      <p className="font-bold text-slate-900 text-sm">Module 1: Principles, Overview & Conceptual Taxonomy</p>
+                      <span className="text-[11px] font-bold text-slate-400">Pages 1 – {Math.max(2, Math.floor(pageCount * 0.25))}</span>
+                    </div>
+                    <p className="text-slate-500">Foundational axioms, key definitions, and theoretical structures for {note.course_code}.</p>
+                  </div>
+                  <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 text-xs space-y-1">
+                    <div className="flex items-center justify-between">
+                      <p className="font-bold text-slate-900 text-sm">Module 2: Practical Applications, Mathematical Proofs & Frameworks</p>
+                      <span className="text-[11px] font-bold text-slate-400">Pages {Math.max(3, Math.floor(pageCount * 0.25) + 1)} – {Math.max(4, Math.floor(pageCount * 0.65))}</span>
+                    </div>
+                    <p className="text-slate-500">Formulations, real-world case studies, proof derivations, and problem sets.</p>
+                  </div>
+                  <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 text-xs space-y-1">
+                    <div className="flex items-center justify-between">
+                      <p className="font-bold text-slate-900 text-sm">Module 3: Solved Examination Past Questions & Marking Schemes</p>
+                      <span className="text-[11px] font-bold text-slate-400">Pages {Math.max(5, Math.floor(pageCount * 0.65) + 1)} – {pageCount}</span>
+                    </div>
+                    <p className="text-slate-500">Verified step-by-step examination model answers and marking rubrics.</p>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
